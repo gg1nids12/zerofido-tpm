@@ -1,19 +1,23 @@
 > [!WARNING]
-> **Development fork — work in progress.** This is the `tpm` branch of
-> [gg1nids12/zerofido](https://github.com/gg1nids12/zerofido), a modified version of
-> [ZeroFIDO](https://github.com/MinorGlitch/zerofido) by Alex Stoyanov (MinorGlitch).
-> It is tested on one Flipper Zero with Momentum firmware `mntm-012`. Keep backup sign-in
-> methods on every account. License (GPL-3.0-or-later) and authorship of the original are
-> preserved; every change is listed in [CHANGES-TPM.md](CHANGES-TPM.md).
+> **Work in progress.** **zerofido-tpm** is a modified version of
+> [ZeroFIDO](https://github.com/MinorGlitch/zerofido) by Alex Stoyanov (MinorGlitch), not
+> affiliated with or endorsed by the original author. About nine tenths of the code is
+> ZeroFIDO; this project adds a PIN vault, PIN-bound passkeys, Bluetooth LE for Windows and
+> more (see the table below). The full history, including all original commits, is kept;
+> license GPL-3.0-or-later; every change is listed in [CHANGES-TPM.md](CHANGES-TPM.md).
+> Tested on one Flipper Zero with Momentum firmware `mntm-012`. Keep backup sign-in methods on
+> every account.
 >
-> **Версия в разработке — доработка ZeroFIDO.** Проверена на одном Flipper Zero с прошивкой
-> Momentum `mntm-012`. Оставляйте на аккаунтах запасной способ входа.
+> **В разработке.** zerofido-tpm — доработанная версия [ZeroFIDO](https://github.com/MinorGlitch/zerofido)
+> Алекса Стоянова (Alex Stoyanov); около 90% кода — оригинал, история и лицензия сохранены.
+> Проверено на одном Flipper Zero с прошивкой Momentum `mntm-012`. Оставляйте на аккаунтах
+> запасной способ входа.
 
 ## Install in 3 steps
 
 **You need:** a Flipper Zero with [Momentum firmware](https://momentum-fw.dev/update) `mntm-012`.
 
-1. **Download** [zerofido.fap](https://github.com/gg1nids12/zerofido/releases/latest/download/zerofido.fap).
+1. **Download** [zerofido.fap](https://github.com/gg1nids12/zerofido-tpm/releases/latest/download/zerofido.fap).
 2. **Copy** it to the Flipper: plug the Flipper into your computer, open
    [qFlipper](https://flipperzero.one/update) → **File manager** → **SD Card** → `apps` → `USB`
    and drag `zerofido.fap` into that folder (create `USB` if it is missing).
@@ -31,7 +35,7 @@ then on sign-ins work without the cable.
 
 **Нужно:** Flipper Zero с прошивкой [Momentum](https://momentum-fw.dev/update) `mntm-012`.
 
-1. **Скачайте** [zerofido.fap](https://github.com/gg1nids12/zerofido/releases/latest/download/zerofido.fap).
+1. **Скачайте** [zerofido.fap](https://github.com/gg1nids12/zerofido-tpm/releases/latest/download/zerofido.fap).
 2. **Скопируйте** на Флиппер: подключите его к компьютеру, откройте
    [qFlipper](https://flipperzero.one/update) → **File manager** → **SD Card** → `apps` → `USB`
    и перетащите туда `zerofido.fap` (если папки `USB` нет — создайте).
@@ -48,9 +52,9 @@ then on sign-ins work without the cable.
 Details, PIN and security notes: [Installation](#installation), [Security notes](#security-notes).
 Подробности, PIN и безопасность: [Установка (по-русски)](#установка-по-русски).
 
-## This fork (`tpm` branch) in short
+## What zerofido-tpm changes
 
-| | Upstream ZeroFIDO 0.8 | This fork |
+| | Upstream ZeroFIDO 0.8 | zerofido-tpm |
 |---|---|---|
 | Transports | USB HID, NFC | **USB HID + Bluetooth LE (Windows)**, chosen automatically; NFC off by default |
 | PIN check | PIN hash stored on the SD card | **No PIN hash stored.** Slow check (~1 s) through the Flipper's device-unique AES key |
@@ -81,8 +85,8 @@ More: [docs/BLUETOOTH.md](docs/BLUETOOTH.md) (Bluetooth transport),
 
 ### Install the app
 
-1. Download [zerofido.fap](https://github.com/gg1nids12/zerofido/releases/latest/download/zerofido.fap)
-   (all versions: [Releases](https://github.com/gg1nids12/zerofido/releases)).
+1. Download [zerofido.fap](https://github.com/gg1nids12/zerofido-tpm/releases/latest/download/zerofido.fap)
+   (all versions: [Releases](https://github.com/gg1nids12/zerofido-tpm/releases)).
 2. Copy it to the Flipper's SD card as `apps/USB/zerofido.fap` — with qFlipper (*File
    manager → SD Card → apps → USB*), the Flipper mobile app, or a card reader.
 3. On the Flipper: *Apps → USB → ZeroFIDO*. In Momentum you can also put it on the main menu
@@ -122,7 +126,7 @@ ufbt update --index-url=https://up.momentum-fw.dev/firmware/directory.json --cha
 ZEROFIDO_PROFILE=full ufbt          # dist/zerofido.fap
 ```
 
-Build flags of this fork (environment variables, `1`/`0`):
+Build flags of zerofido-tpm (environment variables, `1`/`0`):
 
 | Flag | Default | Effect |
 |---|---|---|
@@ -163,8 +167,8 @@ the passkeys).
 компьютер с **Windows 10/11** и Bluetooth (Android и iPhone ключи по Bluetooth не используют —
 там кабель).
 
-1. Скачайте [zerofido.fap](https://github.com/gg1nids12/zerofido/releases/latest/download/zerofido.fap)
-   (все версии: [Releases](https://github.com/gg1nids12/zerofido/releases)).
+1. Скачайте [zerofido.fap](https://github.com/gg1nids12/zerofido-tpm/releases/latest/download/zerofido.fap)
+   (все версии: [Releases](https://github.com/gg1nids12/zerofido-tpm/releases)).
 2. Скопируйте на карту Флиппера как `apps/USB/zerofido.fap` (qFlipper → *File manager → SD Card
    → apps → USB*, мобильное приложение Flipper или картридер).
 3. На Флиппере: *Apps → USB → ZeroFIDO*. В Momentum можно вынести в главное меню (настройки
@@ -192,7 +196,7 @@ the passkeys).
 
 # Upstream README (ZeroFIDO 0.8)
 
-The text below is the original ZeroFIDO README. Where it differs from the fork (transports,
+The text below is the original ZeroFIDO README. Where it differs from zerofido-tpm (transports,
 U2F, attestation), the tables above apply.
 
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)

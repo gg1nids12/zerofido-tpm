@@ -176,3 +176,13 @@ The PIN stays optional. Without a PIN everything works as upstream.
 - Host: all native suites pass; the new test fails without the change.
 - Device (Momentum mntm-012, Windows 11, webauthn.io): two accounts registered with a PIN;
   sign-in without a user name — one OK on the Flipper, Windows listed both accounts.
+
+## 2026-11-06 — own repository: zerofido-tpm
+
+- The project moves from the GitHub fork `gg1nids12/zerofido` to the standalone repository
+  [gg1nids12/zerofido-tpm](https://github.com/gg1nids12/zerofido-tpm), with the full history
+  (all original ZeroFIDO commits by Alex Stoyanov included). It stays a modified version of
+  ZeroFIDO under GPL-3.0-or-later; the old fork is archived with a pointer here.
+- `README.md`: banner names the project and states the relation to ZeroFIDO (not affiliated,
+  about nine tenths of the code is ZeroFIDO); links point to the new repository.
+  `docs/BLUETOOTH.md`: wording.

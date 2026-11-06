@@ -1,6 +1,6 @@
 # Bluetooth LE transport (tpm branch)
 
-ZeroFIDO in this fork speaks CTAP2 over Bluetooth Low Energy, as defined in the CTAP 2.x
+zerofido-tpm (based on ZeroFIDO) speaks CTAP2 over Bluetooth Low Energy, as defined in the CTAP 2.x
 specification ("Bluetooth Smart / Bluetooth Low Energy Technology"). Windows 10/11 uses paired
 Bluetooth security keys for WebAuthn; that is the target. Android and iOS browsers do not use
 Bluetooth security keys.
@@ -29,7 +29,7 @@ profile) and restores it on exit (`bt_profile_restore_default`).
   | fidoControlPointLength | `F1D0FFF3-DEAA-ECEE-B42F-C9BA7ED623BB` | read | authenticated read |
   | fidoServiceRevisionBitfield | `F1D0FFF4-DEAA-ECEE-B42F-C9BA7ED623BB` | read, write | authenticated |
 
-  The revision bitfield offers `0x20` (FIDO2 only; legacy U2F is off in this fork).
+  The revision bitfield offers `0x20` (FIDO2 only; legacy U2F is off in zerofido-tpm).
 - Device Information service `0x180A`: manufacturer `ZeroFIDO dev`, model
   `Flipper Zero FIDO2`, firmware `tpm-dev`.
 
