@@ -186,3 +186,12 @@ The PIN stays optional. Without a PIN everything works as upstream.
 - `README.md`: banner names the project and states the relation to ZeroFIDO (not affiliated,
   about nine tenths of the code is ZeroFIDO); links point to the new repository.
   `docs/BLUETOOTH.md`: wording.
+
+## 2026-11-06 — NFC status
+
+- `05ad350` `src/zerofido_trace.[ch]`, `src/transport/nfc_xlog.[ch]`, `src/transport/nfc_worker.c`,
+  `src/ui/views.c`: in NFC builds the service trace is kept in RAM during NFC exchanges and
+  written after the phone leaves (no SD writes inside the NFC callback).
+- Android NFC still does not work with this build: in the logs the phone probes the tag for NDEF,
+  re-activates it, and the FIDO request never reaches the app. NFC stays off by default
+  (`ZEROFIDO_NFC=1` to build it in); USB and Bluetooth are unaffected.
