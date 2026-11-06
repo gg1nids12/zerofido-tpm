@@ -40,6 +40,7 @@
 #include "nfc_session.h"
 #include "nfc_trace.h"
 #include "nfc_xlog.h"
+#include "../zerofido_trace.h"
 #include "usb_hid_session.h"
 
 #if defined(ZF_RELEASE_DIAGNOSTICS) && ZF_RELEASE_DIAGNOSTICS && !defined(ZF_HOST_TEST)
@@ -334,6 +335,7 @@ int32_t zf_transport_nfc_worker(void *context) {
     state->last_visible_stage_tick = furi_get_tick();
     furi_mutex_release(app->ui_mutex);
     zf_transport_nfc_trace_bind(state->trace_queue, furi_thread_get_current_id());
+    zf_trace_set_deferred(true); /* tpm branch: no SD writes during NFC exchanges */
     nfc_listener_start(state->listener, zf_transport_nfc_event_callback, app);
     zerofido_ui_refresh_status_line(app);
 
@@ -368,6 +370,8 @@ int32_t zf_transport_nfc_worker(void *context) {
     nfc_listener_stop(state->listener);
     zf_transport_nfc_trace_drain(state->trace_queue);
     zf_transport_nfc_trace_unbind(state->trace_queue);
+    zf_trace_set_deferred(false);
+    zf_trace_flush(app->storage);
     zf_nfc_xlog_session_end();
     zf_nfc_xlog_flush(app->storage);
     zf_transport_nfc_on_disconnect(app);

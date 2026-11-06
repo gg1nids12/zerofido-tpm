@@ -25,6 +25,14 @@
 #if ZF_TPM_TRACE
 void zf_trace(Storage *storage, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 #define ZF_TRACE(storage, ...) zf_trace((storage), __VA_ARGS__)
+/*
+ * tpm branch (2026-11-06): while NFC is active, lines are kept in RAM instead
+ * of being written during the exchange (an SD write inside the NFC callback
+ * delays the phone); zf_trace_flush() writes them once the phone has left.
+ */
+void zf_trace_set_deferred(bool deferred);
+void zf_trace_direct(Storage *storage, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+void zf_trace_flush(Storage *storage);
 #else
 /* Disabled: still evaluates the arguments, so callers need no #if around them. */
 static inline void zf_trace_noop(Storage *storage, const char *fmt, ...) {
@@ -32,4 +40,7 @@ static inline void zf_trace_noop(Storage *storage, const char *fmt, ...) {
     (void)fmt;
 }
 #define ZF_TRACE(storage, ...) zf_trace_noop((storage), __VA_ARGS__)
+#define zf_trace_set_deferred(deferred) ((void)(deferred))
+#define zf_trace_direct(storage, ...) zf_trace_noop((storage), __VA_ARGS__)
+#define zf_trace_flush(storage) ((void)(storage))
 #endif

@@ -38,7 +38,7 @@ typedef struct {
 static ZfNfcXlogEntry zf_nfc_xlog_ring[ZF_NFC_XLOG_LEN];
 static uint32_t zf_nfc_xlog_total;
 static uint32_t zf_nfc_xlog_t0;
-static volatile bool zf_nfc_xlog_pending;
+static volatile bool zf_nfc_xlog_pending_flag;
 
 /* Caller is inside FURI_CRITICAL: NFC worker and our worker both write. */
 static ZfNfcXlogEntry *zf_nfc_xlog_next(char type) {
@@ -86,7 +86,11 @@ void zf_nfc_xlog_event(const char *name) {
 }
 
 void zf_nfc_xlog_session_end(void) {
-    zf_nfc_xlog_pending = true;
+    zf_nfc_xlog_pending_flag = true;
+}
+
+bool zf_nfc_xlog_pending(void) {
+    return zf_nfc_xlog_pending_flag;
 }
 
 static size_t zf_nfc_xlog_format(const ZfNfcXlogEntry *entry, char *out, size_t size) {
@@ -126,7 +130,7 @@ void zf_nfc_xlog_flush(Storage *storage) {
     char line[96];
     size_t used = 0;
 
-    if (!zf_nfc_xlog_pending || !storage) {
+    if (!zf_nfc_xlog_pending_flag || !storage) {
         return;
     }
     copy = malloc(sizeof(zf_nfc_xlog_ring));
@@ -137,13 +141,13 @@ void zf_nfc_xlog_flush(Storage *storage) {
     memcpy(copy, zf_nfc_xlog_ring, sizeof(zf_nfc_xlog_ring));
     total = zf_nfc_xlog_total;
     zf_nfc_xlog_total = 0;
-    zf_nfc_xlog_pending = false;
+    zf_nfc_xlog_pending_flag = false;
     FURI_CRITICAL_EXIT();
 
     count = total < ZF_NFC_XLOG_LEN ? total : ZF_NFC_XLOG_LEN;
     first = total - count;
     if (total > count) {
-        ZF_TRACE(storage, "NFC lost=%lu", (unsigned long)(total - count));
+        zf_trace_direct(storage, "NFC lost=%lu", (unsigned long)(total - count));
     }
     for (uint32_t i = 0; i < count; ++i) {
         char token[48];
@@ -151,7 +155,7 @@ void zf_nfc_xlog_flush(Storage *storage) {
                                         sizeof(token));
 
         if (used > 0U && used + len >= sizeof(line)) {
-            ZF_TRACE(storage, "NFC%s", line);
+            zf_trace_direct(storage, "NFC%s", line);
             used = 0;
         }
         memcpy(line + used, token, len);
@@ -159,7 +163,7 @@ void zf_nfc_xlog_flush(Storage *storage) {
         line[used] = '\0';
     }
     if (used > 0U) {
-        ZF_TRACE(storage, "NFC%s", line);
+        zf_trace_direct(storage, "NFC%s", line);
     }
     free(copy);
 }

@@ -34,6 +34,8 @@ void zf_nfc_xlog_tx(uint16_t sw, size_t len);
 /* name must be a string literal (only the pointer is kept). */
 void zf_nfc_xlog_event(const char *name);
 void zf_nfc_xlog_session_end(void);
+/* True after the phone left and before the log was written. */
+bool zf_nfc_xlog_pending(void);
 /* Writes pending entries to the service trace; call from a thread that may block. */
 void zf_nfc_xlog_flush(Storage *storage);
 #else
@@ -42,5 +44,6 @@ void zf_nfc_xlog_flush(Storage *storage);
 #define zf_nfc_xlog_tx(...) ((void)0)
 #define zf_nfc_xlog_event(...) ((void)0)
 #define zf_nfc_xlog_session_end() ((void)0)
+#define zf_nfc_xlog_pending() false
 #define zf_nfc_xlog_flush(...) ((void)0)
 #endif

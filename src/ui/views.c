@@ -1760,7 +1760,10 @@ static void zerofido_tick_callback(void *context) {
 
     furi_assert(app);
     zf_vault_tick(); /* tpm branch: wipe the PMK after its timeout */
-    zf_nfc_xlog_flush(app->storage); /* tpm branch: light NFC log after a tap */
+    if (zf_nfc_xlog_pending()) { /* tpm branch: the phone left — write what NFC kept in RAM */
+        zf_trace_flush(app->storage);
+        zf_nfc_xlog_flush(app->storage);
+    }
     zerofido_auto_transport_tick(app);
     zf_app_lifecycle_startup_pending(app);
     if (zerofido_ui_expire_pending_interaction(app)) {
