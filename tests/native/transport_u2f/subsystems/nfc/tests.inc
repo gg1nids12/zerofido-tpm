@@ -17,7 +17,12 @@ static void test_nfc_listener_profile_is_valid_iso14443_4a(void) {
     expect(base->sak == 0x20, "nfc listener should advertise ISO-DEP without MIFARE Classic");
     expect(ats->tl == 0x05, "nfc listener should expose the Nitrokey-style ATS length");
     expect(ats->t0 == 0x78, "nfc listener should advertise the iOS-compatible FSC ATS format byte");
-    expect(ats->ta_1 == 0x91, "nfc listener should expose ATS TA1 from the Nitrokey profile");
+    /*
+     * tpm branch (2026-11-06): 106 kbit/s only. The card-mode listener runs at
+     * 106; advertising 212 (upstream 0x91, copied from a Nitrokey) let a reader
+     * send PPS for a rate the Flipper cannot follow.
+     */
+    expect(ats->ta_1 == 0x80, "nfc listener should advertise 106 kbit/s only in ATS TA1");
     expect(ats->tb_1 == 0xE8, "nfc listener should expose ATS TB1 with long FWT for CTAP2");
     expect(ats->tc_1 == 0x00, "nfc listener should expose ATS TC1 from the Nitrokey profile");
     expect(simple_array_get_count(ats->t1_tk) == 0,
@@ -491,7 +496,7 @@ static void test_nfc_desfire_deselect_sleeps_before_next_activation(void) {
     expect(app.transport_nfc_state_storage.iso4_active,
            "RATS after DESFire S-DESELECT should reactivate ISO-DEP");
     expect(g_last_nfc_tx_len == 7U &&
-               memcmp(g_last_nfc_tx, (const uint8_t[]){0x05, 0x78, 0x91, 0xE8, 0x00}, 5U) == 0,
+               memcmp(g_last_nfc_tx, (const uint8_t[]){0x05, 0x78, 0x80, 0xE8, 0x00}, 5U) == 0,
            "RATS after DESFire S-DESELECT should transmit the iOS ATS");
 
     bit_buffer_free(buffer);
@@ -522,7 +527,7 @@ static void test_nfc_3a_rats_sends_ats_with_public_tx(void) {
            "RATS should activate the local ISO-DEP layer");
     expect(g_nfc_tx_count == 1U && g_last_nfc_tx_len == 7U,
            "RATS should transmit ATS plus ISO14443A CRC through public nfc_listener_tx");
-    expect(memcmp(g_last_nfc_tx, (const uint8_t[]){0x05, 0x78, 0x91, 0xE8, 0x00}, 5U) == 0,
+    expect(memcmp(g_last_nfc_tx, (const uint8_t[]){0x05, 0x78, 0x80, 0xE8, 0x00}, 5U) == 0,
            "RATS should receive the configured short ATS");
     expect(test_log_contains("NFC RATS E0 len=1 80"),
            "RATS should expose the activation breadcrumb");
@@ -560,7 +565,7 @@ static void test_nfc_3a_repeated_rats_resends_ats_instead_of_iso4_block(void) {
            "repeated RATS should restart activation instead of falling through as an ISO4 block");
     expect(g_nfc_tx_count == 2U && g_last_nfc_tx_len == 7U,
            "repeated RATS should send ATS a second time");
-    expect(memcmp(g_last_nfc_tx, (const uint8_t[]){0x05, 0x78, 0x91, 0xE8, 0x00}, 5U) == 0,
+    expect(memcmp(g_last_nfc_tx, (const uint8_t[]){0x05, 0x78, 0x80, 0xE8, 0x00}, 5U) == 0,
            "repeated RATS should receive the configured short ATS");
     expect(test_log_contains("NFC RATS E0 len=1 80"),
            "repeated RATS should keep the activation breadcrumb instead of NFC block");

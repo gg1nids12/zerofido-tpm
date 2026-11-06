@@ -34,7 +34,15 @@
 static ZfNfcReaderProfile zf_transport_nfc_default_reader_profile(ZfNfcReaderProfileKind kind) {
     ZfNfcReaderProfile profile = {
         .kind = kind,
-        .ats = {0x05U, 0x78U, 0x91U, 0xE8U, 0x00U},
+        /*
+         * tpm branch (2026-11-06): TA(1) = 0x80 — 106 kbit/s only, in both
+         * directions. Upstream advertised 0x91 (212 kbit/s as well), but the
+         * Flipper's card-mode listener runs at 106: a reader that accepted the
+         * offer and sent PPS for 212 would lose the link right after
+         * activation. ISO/IEC 14443-4 7.3: an authenticator must advertise only
+         * the rates it supports.
+         */
+        .ats = {0x05U, 0x78U, 0x80U, 0xE8U, 0x00U},
         .ats_len = 5U,
         .r_ack_uses_incoming_block = true,
         .rx_chain_duplicate_limit = 8U,

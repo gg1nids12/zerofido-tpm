@@ -948,6 +948,10 @@ NfcCommand zf_transport_nfc_event_callback(NfcGenericEvent event, void *context)
         const bool pps_defer = zf_transport_nfc_has_large_cached_replay(state);
         bool sent = false;
 
+        /* tpm branch (2026-11-06): a reader changing the bit rate must show up
+         * in the light log — it is a likely cause of a link lost after RATS. */
+        zf_nfc_xlog_event("pps");
+
         if (!pps_defer) {
             sent = zf_transport_nfc_send_pps_ack(state, frame[0]);
         }
@@ -994,6 +998,8 @@ NfcCommand zf_transport_nfc_event_callback(NfcGenericEvent event, void *context)
         const bool s_deselect = zf_transport_nfc_is_s_deselect_block(frame[0]);
         const bool s_wtx = zf_transport_nfc_is_s_wtx_block(frame[0]);
 
+        zf_nfc_xlog_event(s_deselect ? "s-deselect" : (s_wtx ? "s-wtx" : "s-block"));
+
         if (s_deselect) {
             zf_transport_nfc_teardown_rf_activation_locked(state);
             zf_transport_nfc_note_ui_stage_locked(state, ZfNfcUiStageAppletWaiting);
@@ -1012,6 +1018,7 @@ NfcCommand zf_transport_nfc_event_callback(NfcGenericEvent event, void *context)
     }
 
     if (!zf_transport_nfc_is_i_block(frame[0])) {
+        zf_nfc_xlog_event("other-frame"); /* tpm branch: unknown block kind */
         if ((frame[0] & ZF_NFC_PCB_CID) == 0U) {
             zf_transport_nfc_send_r_nak(state, frame[0]);
         }
