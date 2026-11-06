@@ -35,14 +35,14 @@ static ZfNfcReaderProfile zf_transport_nfc_default_reader_profile(ZfNfcReaderPro
     ZfNfcReaderProfile profile = {
         .kind = kind,
         /*
-         * tpm branch (2026-11-06): TA(1) = 0x80 — 106 kbit/s only, in both
-         * directions. Upstream advertised 0x91 (212 kbit/s as well), but the
-         * Flipper's card-mode listener runs at 106: a reader that accepted the
-         * offer and sent PPS for 212 would lose the link right after
-         * activation. ISO/IEC 14443-4 7.3: an authenticator must advertise only
-         * the rates it supports.
+         * Upstream ATS, verified on iPhone; docs/writeup_ios.md asks not to
+         * change it without retesting iPhone. tpm branch (2026-11-06): TA(1)
+         * was briefly 0x80 (106 kbit/s only) because the card-mode listener
+         * runs at 106 and advertising 212 could lose a reader that switches.
+         * No reader in our traces ever sent PPS, and the owner wants the
+         * iPhone path as upstream has it, so the upstream value is back.
          */
-        .ats = {0x05U, 0x78U, 0x80U, 0xE8U, 0x00U},
+        .ats = {0x05U, 0x78U, 0x91U, 0xE8U, 0x00U},
         .ats_len = 5U,
         .r_ack_uses_incoming_block = true,
         .rx_chain_duplicate_limit = 8U,
