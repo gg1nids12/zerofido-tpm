@@ -84,7 +84,7 @@ uint8_t zf_ctap_dispatch_require_idle(ZerofidoApp *app) {
     /*
      * This is only a pre-dispatch fast gate. Stateful handlers acquire the
      * real maintenance gate before mutating shared state, so do not block on
-     * ui_mutex here: NFC readers may poll CTAP MSG repeatedly while the
+     * ui_mutex here: a client may poll CTAP MSG repeatedly while the
      * request thread is trying to enter this function.
      */
     return app && app->maintenance_busy ? ZF_CTAP_ERR_NOT_ALLOWED : ZF_CTAP_SUCCESS;

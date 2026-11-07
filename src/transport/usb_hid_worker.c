@@ -15,8 +15,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef ZF_NFC_ONLY
-
 #include "usb_hid_worker.h"
 
 #ifndef ZF_HOST_TEST
@@ -524,4 +522,3 @@ void zf_transport_usb_hid_notify_interaction_changed(ZerofidoApp *app) {
     zf_transport_signal_worker(app, ZF_WORKER_EVT_APPROVAL);
 }
 
-#endif

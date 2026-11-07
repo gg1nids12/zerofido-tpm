@@ -118,7 +118,7 @@ void u2f_clear_user_present(U2fData *U2F) {
 
 /*
  * Validates the APDU, dispatches register/authenticate/version, and writes the
- * response back into the caller buffer used by USB HID MSG or NFC APDU paths.
+ * response back into the caller buffer used by the USB HID MSG path.
  */
 uint16_t u2f_msg_parse(U2fData *U2F, uint8_t *buf, uint16_t request_len,
                        uint16_t response_capacity) {

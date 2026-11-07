@@ -1,9 +1,12 @@
 import os
 
 
+# tpm branch (2026-11-06): the "nfc" profile is gone with the NFC transport
+# (owner: "NFC out of the project — too complicated and not needed"). What is
+# left: "usb" (USB HID only) and "full" (USB HID + Bluetooth LE FIDO).
 profile = os.environ.get("ZEROFIDO_PROFILE", "usb").lower()
-if profile not in ("usb", "nfc", "full"):
-    raise ValueError("ZEROFIDO_PROFILE must be one of: usb, nfc, full")
+if profile not in ("usb", "full"):
+    raise ValueError("ZEROFIDO_PROFILE must be one of: usb, full")
 
 def env_flag(name, default=False):
     value = os.environ.get(name)
@@ -29,16 +32,6 @@ packed_attestation = env_flag("ZEROFIDO_PACKED_ATTESTATION", False)
 u2f_enabled = env_flag("ZEROFIDO_U2F", False)
 # tpm branch (2026-11-05): Bluetooth LE FIDO (Windows) in the universal build.
 ble_enabled = env_flag("ZEROFIDO_BLE", True) and profile == "full"
-# tpm branch (2026-11-06): lab build for NFC debugging — stays in NFC with the
-# cable plugged in, so the NFC trace can be read live over USB serial.
-nfc_lab = env_flag("ZEROFIDO_NFC_LAB", False)
-# tpm branch (2026-11-06): the owner turned NFC off in the universal build:
-# no cable -> Bluetooth, cable -> USB. Frees ~15 KB of code. ZEROFIDO_NFC=1
-# brings it back; the "nfc" profile always has it.
-nfc_enabled = profile == "nfc" or (profile == "full" and env_flag("ZEROFIDO_NFC", False))
-# tpm branch (2026-11-06): light NFC exchange log (headers and status words
-# only) into the service trace; fits the heap, unlike the full diagnostics.
-nfc_xlog = env_flag("ZEROFIDO_NFC_XLOG", True) and nfc_enabled
 # tpm branch (2026-11-06): service trace (/ext/apps_data/zerofido/trace.txt):
 # command codes, status codes and timings only. On while the branch is in
 # development; ZEROFIDO_TRACE=0 turns it off.
@@ -53,9 +46,6 @@ cdefines = [
     f"ZF_PACKED_ATTESTATION={1 if packed_attestation else 0}",
     f"ZF_U2F_DISABLED={0 if u2f_enabled else 1}",
     f"ZF_BLE_ENABLED={1 if ble_enabled else 0}",
-    f"ZF_NFC_LAB={1 if nfc_lab else 0}",
-    f"ZF_NFC_XLOG={1 if nfc_xlog else 0}",
-    f"ZF_NFC_ENABLED={1 if nfc_enabled else 0}",
     f"ZF_TPM_TRACE={1 if tpm_trace else 0}",
 ]
 sources = [
@@ -93,26 +83,6 @@ requires = [
 description = "FIDO2 for Flipper Zero"
 if profile == "usb":
     cdefines.append("ZF_USB_ONLY")
-    sources.extend(
-        [
-            "!nfc_*.c",
-        ]
-    )
-elif profile == "nfc":
-    cdefines.append("ZF_NFC_ONLY")
-    sources.extend(
-        [
-            "!usb_hid_*.c",
-        ]
-    )
-    requires.append("nfc")
-    description = "FIDO2 for Flipper Zero"
-else:
-    if nfc_enabled:
-        requires.append("nfc")
-    else:
-        sources.append("!nfc_*.c")
-    description = "FIDO2 for Flipper Zero"
 
 if not u2f_enabled:
     sources.append("!u2f")
@@ -121,17 +91,12 @@ if ble_enabled:
 else:
     sources.append("!ble_*.c")
 
-if not release_diagnostics:
-    sources.append("!nfc_trace.c")
 if not usb_diagnostics:
     sources.append("!zerofido_usb_diagnostics.c")
 
 App(
     appid="zerofido",
-    # tpm branch (2026-11-05): separate USB and NFC apps share one data folder
-    # (same appid); the NFC-only app gets its own menu name. Full builds no
-    # longer fit the Momentum heap during NFC work.
-    name="ZeroFIDO NFC" if profile == "nfc" else "ZeroFIDO",
+    name="ZeroFIDO",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="zerofido_main",
     stack_size=4 * 1024,

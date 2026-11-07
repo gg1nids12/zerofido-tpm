@@ -195,3 +195,50 @@ The PIN stays optional. Without a PIN everything works as upstream.
 - Android NFC still does not work with this build: in the logs the phone probes the tag for NDEF,
   re-activates it, and the FIDO request never reaches the app. NFC stays off by default
   (`ZEROFIDO_NFC=1` to build it in); USB and Bluetooth are unaffected.
+
+## 2026-11-06 — NFC removed from the project
+
+Owner decision: "back to the start and remove NFC from the project altogether — too
+complicated and not needed." The NFC transport is the original author's work and still lives in
+[upstream ZeroFIDO](https://github.com/MinorGlitch/zerofido); anyone who needs NFC should use
+upstream. Why it went: an Android phone never armed FIDO reader mode for the Flipper (17 test
+runs, only the plain Type-4 tag probe, never the FIDO applet select), the iPhone path needs a
+card-emulation stack that is hard to keep correct without an iPhone to retest on, and USB HID
+plus Bluetooth LE already cover what this build is for.
+
+- Deleted: `src/transport/nfc_dispatch.[ch]`, `nfc_engine.[ch]`, `nfc_iso_dep.[ch]`,
+  `nfc_protocol.[ch]`, `nfc_session.[ch]`, `nfc_trace.[ch]`, `nfc_worker.[ch]`,
+  `nfc_xlog.[ch]`; `host_tools/nfc_trace_console.py`; `docs/writeup_ios.md`;
+  `tests/native/transport_u2f/subsystems/nfc/tests.inc` (3164 lines) and the fake NFC SDK
+  headers under `tests/native/include/nfc/`.
+- `application.fam`: the `nfc` profile and the `ZEROFIDO_NFC`, `ZEROFIDO_NFC_XLOG`,
+  `ZEROFIDO_NFC_LAB` flags are gone; the build no longer requires the firmware `nfc` service.
+  Profiles left: `usb` (USB HID only) and `full` (USB HID + Bluetooth LE).
+- `src/zerofido_runtime_config.[ch]`: `ZfTransportModeNfc` removed; value 1 stays reserved so a
+  config file written by an older build is rejected on load and falls back to USB HID.
+  `nfc_enabled` and `advertise_nfc_transport` dropped from the capability map.
+- `src/transport/adapter.[ch]`, `src/app/lifecycle.[ch]`, `src/zerofido_app_i.h`,
+  `src/ctap/response.c`, `src/ui/views.c`, `src/ui/status.c`: the NFC adapter, NFC transport
+  state, the `nfc` entry in the getInfo transports list and the NFC home-screen text are gone;
+  the `ZF_NFC_ONLY` build shape with it. The settings item "Transport: USB/NFC" and
+  `zf_app_lifecycle_set_transport_mode()` are removed — with one saved transport there is
+  nothing to switch; the transport still follows the cable (cable → USB, no cable → Bluetooth).
+- `src/zerofido_trace.[ch]`: the deferred trace buffer existed only so an SD write could not
+  delay an NFC exchange; removed, which returns 1.5 KB of RAM.
+- Tests: the two auto-accept makeCredential tests were never NFC-specific and keep their
+  coverage under new names (`test_make_credential_auto_accept_*`); the NFC getInfo transport
+  test and the transport-switch-failure test are gone; new
+  `test_runtime_config_load_rejects_removed_transport_mode` checks the fallback to USB HID.
+  `tests/app/test_application_manifest.py`, `host_tools/package_release.py`,
+  `host_tools/size_ledger.py`: NFC expectations dropped.
+- `.github/workflows/build-profiles.yml`, `release.yml`: the `nfc` profile is no longer built.
+- `README.md`, `docs/TPM_HARDENING.md`: NFC rows and the risk F9 (synchronous CTAP on the iOS
+  NFC path) removed; a "Why there is no NFC here" section points at upstream. The upstream
+  README quoted below is unchanged except for markers where it describes NFC.
+
+### Verification (2026-11-06)
+
+- Host: native crypto, protocol (both attestation variants) and transport/U2F suites pass;
+  75 Python tests pass (3 skipped).
+- Build (Momentum mntm-012, API 87.1): `ZEROFIDO_PROFILE=full` 158 656 bytes (with NFC it was
+  188 572; the previous NFC-off build 158 904), `ZEROFIDO_PROFILE=usb` builds too.

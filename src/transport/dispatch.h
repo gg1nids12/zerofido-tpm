@@ -49,7 +49,7 @@ typedef struct {
 } ZfProtocolDispatchResult;
 
 /*
- * Common protocol handoff used by USB HID and NFC. Transport code identifies
+ * Common protocol handoff used by USB HID and Bluetooth LE. Transport code identifies
  * the protocol kind and arena; this function runs CTAP/U2F/WINK handling and
  * returns a transport-neutral dispatch result.
  */

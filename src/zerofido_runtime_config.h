@@ -27,9 +27,13 @@ typedef struct ZerofidoApp ZerofidoApp;
 
 typedef enum {
     ZfTransportModeUsbHid = 0,
-    ZfTransportModeNfc = 1,
-    /* tpm branch: runtime only (never saved), chosen when a PC talks over BLE. */
-    ZfTransportModeBle = 2,
+    /*
+     * tpm branch (2026-11-06): value 1 was NFC, removed with the NFC transport
+     * (owner: "too complicated and not needed"). The number stays reserved so a
+     * config file saved by an older build is simply rejected and falls back to
+     * USB instead of being read as another transport.
+     */
+    ZfTransportModeBle = 2, /* runtime only (never saved), chosen when a PC talks over BLE */
 } ZfTransportMode;
 
 typedef enum {
@@ -54,7 +58,6 @@ typedef struct {
 
 typedef struct {
     bool usb_hid_enabled;
-    bool nfc_enabled;
     bool fido2_enabled;
     bool u2f_enabled;
     bool client_pin_enabled;
@@ -71,7 +74,6 @@ typedef struct {
     bool client_pin_token_requires_consent;
     bool make_cred_uv_not_required;
     bool advertise_usb_transport;
-    bool advertise_nfc_transport;
     bool auto_accept_requests;
     ZfAttestationMode attestation_mode;
 } ZfResolvedCapabilities;

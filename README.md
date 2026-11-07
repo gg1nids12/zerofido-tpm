@@ -56,7 +56,7 @@ Details, PIN and security notes: [Installation](#installation), [Security notes]
 
 | | Upstream ZeroFIDO 0.8 | zerofido-tpm |
 |---|---|---|
-| Transports | USB HID, NFC | **USB HID + Bluetooth LE (Windows)**, chosen automatically; NFC off by default |
+| Transports | USB HID, NFC | **USB HID + Bluetooth LE (Windows)**, chosen automatically; NFC removed |
 | PIN check | PIN hash stored on the SD card | **No PIN hash stored.** Slow check (~1 s) through the Flipper's device-unique AES key |
 | Passkeys created with a PIN | Wrapped with the device key | **Also bound to the PIN** (per-passkey key from a PIN-protected master key) |
 | PIN retries | Counted after the check | **Counted before the check** (a power cut cannot hide a wrong guess) |
@@ -68,6 +68,16 @@ Details, PIN and security notes: [Installation](#installation), [Security notes]
 How it picks the transport: **cable to a PC → USB key; no cable → Bluetooth.** A request
 that arrives over Bluetooth takes over at once (unless a PC is busy with the USB key) and
 the app returns to the cable rule after 10 s without Bluetooth traffic.
+
+### Why there is no NFC here
+
+The NFC transport, including the iPhone work, is the original author's and still lives in
+[upstream ZeroFIDO](https://github.com/MinorGlitch/zerofido). zerofido-tpm dropped it in
+November 2026: an Android phone would not arm FIDO reader mode for the Flipper at all (across
+17 test runs it only ran the plain tag probe, never asked for the FIDO applet), the iPhone path
+needs a card-emulation stack that is hard to keep correct, and USB and Bluetooth already cover
+what this build is for. Removing it also freed about 30 KB of code. **Use upstream if you need
+NFC.**
 
 More: [docs/BLUETOOTH.md](docs/BLUETOOTH.md) (Bluetooth transport),
 [docs/TPM_HARDENING.md](docs/TPM_HARDENING.md) (PIN vault and key protection),
@@ -131,12 +141,9 @@ Build flags of zerofido-tpm (environment variables, `1`/`0`):
 | Flag | Default | Effect |
 |---|---|---|
 | `ZEROFIDO_BLE` | `1` | Bluetooth LE FIDO transport (full profile) |
-| `ZEROFIDO_NFC` | `0` | NFC transport in the full profile (the `nfc` profile always has it) |
 | `ZEROFIDO_U2F` | `0` | Legacy U2F (CTAP1) inside ZeroFIDO |
 | `ZEROFIDO_PACKED_ATTESTATION` | `0` | Packed attestation and the ZeroFIDO AAGUID |
 | `ZEROFIDO_TRACE` | `1` | Service trace: command/status codes and timings only |
-| `ZEROFIDO_NFC_XLOG` | `1` | Light NFC exchange log (APDU headers and status words), when NFC is on |
-| `ZEROFIDO_NFC_LAB` | `0` | Lab build: stays in NFC with the cable in (for NFC debugging) |
 
 ### Your data
 
@@ -197,7 +204,8 @@ the passkeys).
 # Upstream README (ZeroFIDO 0.8)
 
 The text below is the original ZeroFIDO README. Where it differs from zerofido-tpm (transports,
-U2F, attestation), the tables above apply.
+U2F, attestation), the tables above apply. In particular it describes the **NFC transport and the
+`nfc` build profile, which zerofido-tpm does not have** — that part applies to upstream only.
 
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
 ![Platform: Flipper Zero](https://img.shields.io/badge/platform-Flipper%20Zero-orange)
@@ -213,6 +221,7 @@ open ZeroFIDO, and approve sign-ins on services that support FIDO2/WebAuthn or l
 The app stores credentials on the Flipper, asks for local approval, supports `ClientPIN`,
 and speaks the CTAP2/FIDO2 protocol used by browsers and security keys. USB HID handles
 desktop browser flows. NFC builds handle phone flows.
+*(zerofido-tpm: USB HID and Bluetooth LE only — see above.)*
 
 NFC has been tested on iPhone. Android NFC support is next. In the meantime, connect the
 Flipper to the phone over USB when the phone accepts USB security keys.
@@ -270,7 +279,7 @@ pull requests are welcome.
 | Capability | Status |
 | --- | --- |
 | USB HID | Supported in the `usb` and `full` release profiles |
-| NFC | Supported in the `nfc` and `full` release profiles |
+| NFC | Supported in the `nfc` and `full` release profiles *(not in zerofido-tpm)* |
 | U2F V2 | Supported |
 | FIDO2.0 / CTAP2.0 | Supported |
 | FIDO2.1 / CTAP2.1 | Developer-only experimental build flag |
@@ -298,7 +307,7 @@ ZeroFIDO includes an on-device Settings screen.
 
 | Setting | Use |
 | --- | --- |
-| Transport | Choose USB HID or NFC when the build includes both transports. |
+| Transport | Choose USB HID or NFC when the build includes both transports. *(zerofido-tpm: no such item — the transport follows the cable.)* |
 | Attestation | Choose how MakeCredential answers attestation requests. |
 | PIN | Set, change, or manage the ClientPIN used by sites that require user verification. |
 | Auto-accept | Test mode for flows that should not require a touch prompt. Only appears when built with `ZEROFIDO_AUTO_ACCEPT_REQUESTS=1`. |
@@ -367,8 +376,8 @@ the stable FIDO2.0 profile enabled by default. Release builds default to
 | Profile | Build flag | Use |
 | --- | --- | --- |
 | USB HID only | `ZEROFIDO_PROFILE=usb` | Default; desktop browser WebAuthn and U2F testing. |
-| NFC only | `ZEROFIDO_PROFILE=nfc` | Phone and NFC conformance work. |
-| Full | `ZEROFIDO_PROFILE=full` | Both transports in one app. |
+| NFC only | `ZEROFIDO_PROFILE=nfc` | Phone and NFC conformance work. *(not in zerofido-tpm)* |
+| Full | `ZEROFIDO_PROFILE=full` | Both transports in one app. *(zerofido-tpm: USB HID + Bluetooth LE.)* |
 
 Release-default builds exclude the NFC trace implementation. Diagnostics must opt in:
 
@@ -383,6 +392,8 @@ ZEROFIDO_PROFILE=nfc uv run python -m ufbt
 ZEROFIDO_PROFILE=usb uv run python -m ufbt
 ZEROFIDO_PROFILE=full uv run python -m ufbt
 ```
+
+*(zerofido-tpm: the `nfc` profile was removed with the NFC transport; `usb` and `full` remain.)*
 
 Build and launch on a connected Flipper:
 
@@ -464,14 +475,8 @@ uv run python host_tools/ctaphid_probe.py \
   --fido2-cert-out metadata/fido2-attestation.der
 ```
 
-Capture NFC trace lines from the Flipper USB CDC console:
-
-```bash
-uv run python host_tools/nfc_trace_console.py --port auto
-uv run python host_tools/nfc_trace_console.py --port <serial-port> --level info --output .tmp/nfc-trace.log
-```
-
-The iPhone NFC transport notes are in [docs/writeup_ios.md](docs/writeup_ios.md).
+*(The NFC trace console and the iPhone NFC writeup are upstream-only; zerofido-tpm removed the
+NFC transport and both files with it.)*
 
 Capture reconnecting crash logs from the same CDC console:
 
@@ -519,7 +524,7 @@ git tag v0.7.0
 git push origin v0.7.0
 ```
 
-The release workflow builds the `nfc`, `usb`, and `full` profiles with
+The release workflow builds the `usb` and `full` profiles (upstream: `nfc` too) with
 `ZEROFIDO_RELEASE_DIAGNOSTICS=0`, packages the stripped `*-release.fap` artifacts, and uploads
 `SHA256SUMS`.
 

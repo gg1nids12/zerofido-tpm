@@ -46,22 +46,16 @@ typedef struct {
     uint8_t attestation_mode;
 } ZfRuntimeConfigFileRecord;
 
+/*
+ * tpm branch (2026-11-06): USB HID is the only saved transport since NFC left
+ * the project; Bluetooth LE is chosen at runtime and never written to the file.
+ */
 static bool zf_transport_mode_is_valid(uint8_t mode) {
-#ifdef ZF_USB_ONLY
     return mode == ZfTransportModeUsbHid;
-#elif defined(ZF_NFC_ONLY)
-    return mode == ZfTransportModeNfc;
-#else
-    return mode == ZfTransportModeUsbHid || (ZF_NFC_ENABLED && mode == ZfTransportModeNfc);
-#endif
 }
 
 static ZfTransportMode zf_runtime_config_default_transport_mode(void) {
-#ifdef ZF_NFC_ONLY
-    return ZfTransportModeNfc;
-#else
     return ZfTransportModeUsbHid;
-#endif
 }
 
 static bool zf_fido2_profile_is_valid(uint8_t profile) {
@@ -385,7 +379,6 @@ bool zf_runtime_config_set_transport_mode(ZerofidoApp *app, Storage *storage,
 void zf_runtime_config_resolve_capabilities(const ZfRuntimeConfig *config,
                                             ZfResolvedCapabilities *capabilities) {
     bool usb_hid_enabled = false;
-    bool nfc_enabled = false;
 
     if (!config || !capabilities) {
         return;
@@ -393,18 +386,12 @@ void zf_runtime_config_resolve_capabilities(const ZfRuntimeConfig *config,
 
 #ifdef ZF_USB_ONLY
     usb_hid_enabled = true;
-    nfc_enabled = false;
-#elif defined(ZF_NFC_ONLY)
-    usb_hid_enabled = false;
-    nfc_enabled = true;
 #else
     usb_hid_enabled = config->transport_mode == ZfTransportModeUsbHid;
-    nfc_enabled = config->transport_mode == ZfTransportModeNfc;
 #endif
 
     memset(capabilities, 0, sizeof(*capabilities));
     capabilities->usb_hid_enabled = usb_hid_enabled;
-    capabilities->nfc_enabled = nfc_enabled;
     capabilities->fido2_enabled = true;
     capabilities->u2f_enabled = config->u2f_enabled;
     capabilities->client_pin_enabled = true;
@@ -426,7 +413,6 @@ void zf_runtime_config_resolve_capabilities(const ZfRuntimeConfig *config,
     capabilities->client_pin_token_requires_consent = capabilities->advertise_fido_2_1;
     capabilities->make_cred_uv_not_required = capabilities->advertise_fido_2_1;
     capabilities->advertise_usb_transport = usb_hid_enabled;
-    capabilities->advertise_nfc_transport = nfc_enabled;
     capabilities->auto_accept_requests = ZF_AUTO_ACCEPT_REQUESTS && config->auto_accept_requests;
     capabilities->attestation_mode = zf_attestation_mode_for_build(config->attestation_mode);
 }
@@ -470,8 +456,6 @@ bool zf_runtime_ctap_command_enabled(const ZerofidoApp *app, uint8_t cmd) {
 
 const char *zf_transport_mode_name(ZfTransportMode mode) {
     switch (mode) {
-    case ZfTransportModeNfc:
-        return "NFC";
     case ZfTransportModeBle:
         return "Bluetooth";
     case ZfTransportModeUsbHid:

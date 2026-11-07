@@ -17,20 +17,13 @@
 
 #include "adapter.h"
 
-#if defined(ZF_USB_ONLY)
 #include "usb_hid_worker.h"
-#elif defined(ZF_NFC_ONLY)
-#include "nfc_worker.h"
-#else
-#include "nfc_worker.h"
-#include "usb_hid_worker.h"
-#if ZF_BLE_ENABLED
+#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY)
 #include "ble_worker.h"
-#endif
 #endif
 #include "../zerofido_app_i.h"
 
-#if !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#ifndef ZF_USB_ONLY
 
 static const ZfTransportAdapterOps *zf_transport_get_adapter(const ZerofidoApp *app) {
     if (!app) {
@@ -41,7 +34,6 @@ static const ZfTransportAdapterOps *zf_transport_get_adapter(const ZerofidoApp *
 }
 
 /* USB HID adapter publishes CTAPHID frames and handles CTAPHID cancellation. */
-#ifndef ZF_NFC_ONLY
 const ZfTransportAdapterOps zf_transport_usb_hid_adapter = {
     .worker = zf_transport_usb_hid_worker,
     .worker_stack_size = 6 * 1024,
@@ -51,20 +43,6 @@ const ZfTransportAdapterOps zf_transport_usb_hid_adapter = {
     .notify_interaction_changed = zf_transport_usb_hid_notify_interaction_changed,
     .poll_cbor_control = zf_transport_usb_hid_poll_cbor_control,
 };
-#endif
-
-/* NFC adapter publishes ISO7816 responses and handles GET RESPONSE polling. */
-#if !defined(ZF_USB_ONLY) && ZF_NFC_ENABLED
-const ZfTransportAdapterOps zf_transport_nfc_adapter = {
-    .worker = zf_transport_nfc_worker,
-    .worker_stack_size = 4 * 1024,
-    .stop = zf_transport_nfc_stop,
-    .send_dispatch_result = zf_transport_nfc_send_dispatch_result,
-    .wait_for_interaction = zf_transport_nfc_wait_for_interaction,
-    .notify_interaction_changed = zf_transport_nfc_notify_interaction_changed,
-    .poll_cbor_control = zf_transport_nfc_poll_cbor_control,
-};
-#endif
 
 #if ZF_BLE_ENABLED
 /* tpm branch: Bluetooth LE adapter (CTAP over BLE, notifications on fidoStatus). */
@@ -126,7 +104,7 @@ uint8_t zf_transport_poll_cbor_control(ZerofidoApp *app, ZfTransportSessionId cu
     return adapter->poll_cbor_control(app, current_session_id);
 }
 
-#elif defined(ZF_USB_ONLY)
+#else /* ZF_USB_ONLY: one transport, no adapter table */
 
 void zf_transport_stop(ZerofidoApp *app) {
     zf_transport_usb_hid_stop(app);
@@ -150,38 +128,11 @@ uint8_t zf_transport_poll_cbor_control(ZerofidoApp *app, ZfTransportSessionId cu
     return zf_transport_usb_hid_poll_cbor_control(app, current_session_id);
 }
 
-#elif defined(ZF_NFC_ONLY)
-
-void zf_transport_stop(ZerofidoApp *app) {
-    zf_transport_nfc_stop(app);
-}
-
-void zf_transport_send_dispatch_result(ZerofidoApp *app, const ZfProtocolDispatchRequest *request,
-                                       const ZfProtocolDispatchResult *result) {
-    zf_transport_nfc_send_dispatch_result(app, request, result);
-}
-
-bool zf_transport_wait_for_interaction(ZerofidoApp *app, ZfTransportSessionId current_session_id,
-                                       bool *approved) {
-    return zf_transport_nfc_wait_for_interaction(app, current_session_id, approved);
-}
-
-void zf_transport_notify_interaction_changed(ZerofidoApp *app) {
-    zf_transport_nfc_notify_interaction_changed(app);
-}
-
-uint8_t zf_transport_poll_cbor_control(ZerofidoApp *app, ZfTransportSessionId current_session_id) {
-    return zf_transport_nfc_poll_cbor_control(app, current_session_id);
-}
-
 #endif
 
 /* tpm branch (2026-11-05): see adapter.h. */
 void zf_transport_processing_keepalive(ZerofidoApp *app, ZfTransportSessionId current_session_id) {
-#if defined(ZF_NFC_ONLY)
-    UNUSED(app);
-    UNUSED(current_session_id);
-#elif defined(ZF_USB_ONLY)
+#if defined(ZF_USB_ONLY)
     zf_transport_usb_hid_processing_keepalive(app, current_session_id);
 #else
     if (app && app->transport_adapter == &zf_transport_usb_hid_adapter) {

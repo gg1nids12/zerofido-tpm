@@ -32,7 +32,7 @@ typedef struct {
 } ZfMakeCredentialResponseScratch;
 
 _Static_assert(sizeof(ZfMakeCredentialResponseScratch) <= 240U,
-               "makeCredential response scratch must stay NFC-safe");
+               "makeCredential response scratch must stay within the frame cap");
 
 typedef struct {
     uint8_t auth_data[160];

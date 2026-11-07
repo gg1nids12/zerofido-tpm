@@ -86,7 +86,7 @@ static const char *zf_home_status_label(ZfHomeStatus status) {
 }
 
 static const char *zf_home_transport_title_label(ZfTransportMode mode) {
-    return mode == ZfTransportModeNfc ? "NFC" : mode == ZfTransportModeBle ? "BT" : "USB";
+    return mode == ZfTransportModeBle ? "BT" : "USB";
 }
 
 static bool zf_status_format_record_item(ZfCredentialRecord *record, char *title, size_t title_size,
@@ -261,10 +261,7 @@ static void zf_status_draw_callback(Canvas *canvas, void *model) {
         const Icon *icon = &I_Connect_me_62x31;
         const char *text = "Connect to a device";
 
-        if (status->transport_mode == ZfTransportModeNfc) {
-            icon = &I_Connected_62x31;
-            text = status->ble_ready ? "Tap phone, USB or BT" : "Tap phone / plug USB";
-        } else if (status->transport_mode == ZfTransportModeBle) {
+        if (status->transport_mode == ZfTransportModeBle) {
             icon = &I_Connected_62x31;
             text = status->status == ZfHomeStatusConnected ? "Bluetooth connected" :
                                                              "Bluetooth ready";

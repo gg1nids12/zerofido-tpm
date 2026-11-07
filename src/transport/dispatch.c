@@ -17,8 +17,6 @@
 
 #include "dispatch.h"
 
-#ifndef ZF_NFC_ONLY
-
 #include <string.h>
 
 #include "../zerofido_app_i.h"
@@ -102,7 +100,7 @@ static void zf_transport_dispatch_abort_if_interrupted(ZfTransportState *transpo
 /*
  * Routes a fully assembled transport message into the selected protocol. The
  * processing generation/session guards let workers discard late responses after
- * CANCEL, channel resync, disconnect, or a new NFC selection.
+ * CANCEL, channel resync, or disconnect.
  */
 void zf_transport_dispatch_complete_message(ZerofidoApp *app, ZfTransportState *transport,
                                             ZfTransportSessionId session_id,
@@ -185,4 +183,3 @@ void zf_transport_dispatch_complete_message(ZerofidoApp *app, ZfTransportState *
     zf_transport_dispatch_abort_if_interrupted(transport, generation);
 }
 
-#endif

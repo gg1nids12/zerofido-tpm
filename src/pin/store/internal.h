@@ -22,7 +22,7 @@
 #include "../../zerofido_types.h"
 
 /*
- * v2 path intentionally ignores pre-overhaul development PIN files. Several NFC
+ * v2 path intentionally ignores pre-overhaul development PIN files. Several
  * bring-up builds could persist a ClientPIN hash before the transport/session
  * ownership was stable; reusing that state makes readers report "incorrect PIN"
  * without ever issuing setPIN again.

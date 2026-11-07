@@ -1025,7 +1025,7 @@ static void test_make_credential_response_does_not_downgrade_required_packed(voi
 }
 #endif
 
-static void test_make_credential_nfc_auto_accept_keeps_uv_clear(void) {
+static void test_make_credential_auto_accept_keeps_uv_clear(void) {
     Storage storage = {0};
     ZerofidoApp app = {0};
     ZfCredentialIndexEntry app_store_records[ZF_MAX_CREDENTIALS] = {0};
@@ -1045,19 +1045,19 @@ static void test_make_credential_nfc_auto_accept_keeps_uv_clear(void) {
         &app, 0x01020304, request, encode_make_credential_ctap_request(request, sizeof(request)),
         response, sizeof(response));
 
-    expect(response_len > 1, "NFC auto-accept makeCredential should still succeed");
-    expect(response[0] == ZF_CTAP_SUCCESS, "NFC auto-accept makeCredential should return success");
+    expect(response_len > 1, "auto-accept makeCredential should still succeed");
+    expect(response[0] == ZF_CTAP_SUCCESS, "auto-accept makeCredential should return success");
     expect(parse_make_credential_auth_flags(response + 1, response_len - 1, &flags),
-           "NFC makeCredential response should expose authenticator data flags");
+           "makeCredential response should expose authenticator data flags");
     expect((flags & 0x04U) == 0U,
-           "NFC auto-accept makeCredential should not fake user verification");
+           "auto-accept makeCredential should not fake user verification");
     expect(g_approval_request_count == 0,
-           "NFC auto-accept makeCredential should bypass the approval prompt");
+           "auto-accept makeCredential should bypass the approval prompt");
     expect(g_status_update_count == 0,
-           "NFC auto-accept makeCredential should not update UI status before the APDU response");
+           "auto-accept makeCredential should not update UI status before the response");
 }
 
-static void test_make_credential_nfc_auto_accept_rejects_uv_option_without_pin(void) {
+static void test_make_credential_auto_accept_rejects_uv_option_without_pin(void) {
     Storage storage = {0};
     ZerofidoApp app = {0};
     ZfCredentialIndexEntry app_store_records[ZF_MAX_CREDENTIALS] = {0};
@@ -1078,11 +1078,11 @@ static void test_make_credential_nfc_auto_accept_rejects_uv_option_without_pin(v
                                                           false, NULL, 0, false, false, NULL, 0),
         response, sizeof(response));
 
-    expect(response_len == 1, "NFC auto-accept uv=true makeCredential should return only status");
+    expect(response_len == 1, "auto-accept uv=true makeCredential should return only status");
     expect(response[0] == ZF_CTAP_ERR_UNSUPPORTED_OPTION,
-           "NFC auto-accept must not satisfy uv=true without real UV/PIN support");
+           "auto-accept must not satisfy uv=true without real UV/PIN support");
     expect(g_approval_request_count == 0,
-           "NFC auto-accept uv=true rejection should happen before approval");
+           "auto-accept uv=true rejection should happen before approval");
 }
 
 static void test_get_assertion_pin_auth_takes_precedence_over_uv(void) {
@@ -2605,41 +2605,6 @@ static void test_get_info_advertises_fido_2_0_without_fido_2_1(void) {
            "CTAP 2.0 profile should omit CTAP 2.1 minPINLength");
     expect(!cbor_map_contains_uint_key(response + 1, response_len - 1, 14),
            "CTAP 2.0 profile should omit CTAP 2.1 firmwareVersion");
-}
-
-static void test_get_info_nfc_ctap2_0_advertises_transport_compactly(void) {
-    ZerofidoApp app = {0};
-    ZfCredentialIndexEntry app_store_records[ZF_MAX_CREDENTIALS] = {0};
-    app.store.records = app_store_records;
-    uint8_t response[512];
-    size_t response_len = 0;
-
-    test_storage_reset();
-    zf_runtime_config_load_defaults(&app.runtime_config);
-    app.runtime_config.transport_mode = ZfTransportModeNfc;
-    zf_runtime_config_resolve_capabilities(&app.runtime_config, &app.capabilities);
-    app.capabilities_resolved = true;
-    response_len = zerofido_handle_ctap2(&app, 0x01020304, (const uint8_t[]){ZfCtapeCmdGetInfo}, 1,
-                                         response, sizeof(response));
-
-    expect(response_len > 1, "NFC GetInfo should return a CBOR body");
-    expect(response[0] == ZF_CTAP_SUCCESS, "NFC GetInfo should succeed");
-    expect(get_info_has_version(response + 1, response_len - 1, "FIDO_2_0"),
-           "NFC CTAP 2.0 profile should advertise FIDO_2_0");
-    expect(!get_info_has_version(response + 1, response_len - 1, "FIDO_2_1"),
-           "NFC CTAP 2.0 profile should not advertise FIDO_2_1");
-    expect(cbor_map_contains_uint_key(response + 1, response_len - 1, 9),
-           "NFC CTAP 2.0 profile should advertise transports");
-    expect(!cbor_map_contains_uint_key(response + 1, response_len - 1, 10),
-           "NFC CTAP 2.0 profile should keep optional algorithms out of compact GetInfo");
-    expect(contains_text(response + 1, response_len - 1, "nfc"),
-           "NFC GetInfo transport list should include nfc");
-    expect(response_len + 2U <= 120U,
-           "NFC CTAP 2.0 GetInfo APDU response should stay below the conservative frame cap");
-    expect(!cbor_map_contains_uint_key(response + 1, response_len - 1, 13),
-           "NFC CTAP 2.0 profile should omit CTAP 2.1 minPINLength");
-    expect(!cbor_map_contains_uint_key(response + 1, response_len - 1, 14),
-           "NFC CTAP 2.0 profile should omit CTAP 2.1 firmwareVersion");
 }
 
 static void test_get_info_experimental_2_1_advertises_pin_uv_auth_token(void) {

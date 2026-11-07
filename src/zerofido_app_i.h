@@ -34,12 +34,7 @@
 
 #include "u2f/session.h"
 #include "transport/adapter.h"
-#ifndef ZF_USB_ONLY
-#include "transport/nfc_worker.h"
-#endif
-#ifndef ZF_NFC_ONLY
 #include "transport/usb_hid_session.h"
-#endif
 #include "zerofido_pin.h"
 #include "zerofido_runtime_config.h"
 #include "zerofido_telemetry.h"
@@ -158,23 +153,14 @@ typedef struct ZerofidoApp {
     FuriThread *startup_thread;
     FuriThread *worker_thread;
     FuriMutex *ui_mutex;
-#if !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#ifndef ZF_USB_ONLY
     const ZfTransportAdapterOps *transport_adapter;
 #endif
     /* tpm branch: Bluetooth LE FIDO link, up while the app runs (NULL if off). */
     struct ZfBleLink *ble_link;
-#ifndef ZF_NFC_ONLY
     FuriHalUsbInterface *previous_usb;
-#endif
     void *transport_state;
-#ifndef ZF_NFC_ONLY
     ZfTransportState transport_state_storage;
-#endif
-#if defined(ZF_HOST_TEST) && !defined(ZF_USB_ONLY)
-    ZfNfcTransportState transport_nfc_state_storage;
-#elif !defined(ZF_USB_ONLY)
-    ZfNfcTransportState *transport_nfc_state_storage;
-#endif
     U2fData *u2f;
     ZfClientPinState pin_state;
     ZfRuntimeConfig runtime_config;
@@ -224,30 +210,6 @@ typedef struct ZerofidoApp {
     ZfCredentialStore store;
     ZfAssertionQueue assertion_queue;
 } ZerofidoApp;
-
-#ifndef ZF_USB_ONLY
-static inline ZfNfcTransportState *zf_app_nfc_transport_state(ZerofidoApp *app) {
-    if (!app) {
-        return NULL;
-    }
-#ifdef ZF_HOST_TEST
-    return &app->transport_nfc_state_storage;
-#else
-    return app->transport_nfc_state_storage;
-#endif
-}
-
-static inline void zf_app_set_nfc_transport_state(ZerofidoApp *app, ZfNfcTransportState *state) {
-    if (!app) {
-        return;
-    }
-#ifdef ZF_HOST_TEST
-    (void)state;
-#else
-    app->transport_nfc_state_storage = state;
-#endif
-}
-#endif
 
 /* Transport scratch is allocated only while a transport worker/session needs it. */
 static inline bool zf_app_transport_arena_acquire(ZerofidoApp *app) {

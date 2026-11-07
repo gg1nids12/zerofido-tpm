@@ -176,16 +176,12 @@ uint8_t zf_ctap_build_get_info_response(const ZfResolvedCapabilities *capabiliti
     const uint8_t *aaguid = zf_attestation_get_aaguid();
     size_t versions_count = 1;
     size_t options_count = 4;
-#if !defined(ZF_NFC_ONLY) && !defined(ZF_USB_ONLY)
+#ifndef ZF_USB_ONLY
     size_t transports_count = 0;
 #endif
     bool include_algorithms = false;
     bool include_ctap21_info_fields = false;
-#if defined(ZF_NFC_ONLY)
-    size_t get_info_pairs = 7;
-#else
     size_t get_info_pairs = 6;
-#endif
 
     if (!capabilities || !zf_cbor_encoder_init(&enc, out, out_capacity)) {
         return ZF_CTAP_ERR_OTHER;
@@ -193,19 +189,13 @@ uint8_t zf_ctap_build_get_info_response(const ZfResolvedCapabilities *capabiliti
 
     include_ctap21_info_fields = capabilities->advertise_fido_2_1;
     /*
-     * Keep CTAP 2.0 NFC GetInfo compact enough for conservative ISO-DEP single
-     * frame replies. Full CTAP 2.1 profiles still advertise algorithms.
+     * Keep the CTAP 2.0 GetInfo compact. Full CTAP 2.1 profiles still advertise
+     * algorithms.
      */
     include_algorithms = include_ctap21_info_fields;
-#if defined(ZF_USB_ONLY)
     if (include_ctap21_info_fields) {
         get_info_pairs++;
     }
-#elif !defined(ZF_NFC_ONLY)
-    if (include_ctap21_info_fields || capabilities->advertise_nfc_transport) {
-        get_info_pairs++;
-    }
-#endif
     if (include_algorithms) {
         get_info_pairs++;
     }
@@ -224,11 +214,8 @@ uint8_t zf_ctap_build_get_info_response(const ZfResolvedCapabilities *capabiliti
     if (capabilities->make_cred_uv_not_required) {
         options_count++;
     }
-#if !defined(ZF_NFC_ONLY) && !defined(ZF_USB_ONLY)
+#ifndef ZF_USB_ONLY
     if (capabilities->advertise_usb_transport) {
-        transports_count++;
-    }
-    if (capabilities->advertise_nfc_transport) {
         transports_count++;
     }
 #endif
@@ -257,21 +244,15 @@ uint8_t zf_ctap_build_get_info_response(const ZfResolvedCapabilities *capabiliti
         (!capabilities->pin_uv_auth_protocol_2_enabled || zf_cbor_encode_uint(&enc, 2)) &&
         zf_cbor_encode_uint(&enc, 1);
 
-#if defined(ZF_NFC_ONLY)
-    if (ok) {
-        ok = zf_cbor_encode_uint(&enc, 9) && zf_cbor_encode_array(&enc, 1) &&
-             zf_cbor_encode_text(&enc, "nfc");
-    }
-#elif defined(ZF_USB_ONLY)
+#ifdef ZF_USB_ONLY
     if (ok && include_ctap21_info_fields) {
         ok = zf_cbor_encode_uint(&enc, 9) && zf_cbor_encode_array(&enc, 1) &&
              zf_cbor_encode_text(&enc, "usb");
     }
 #else
-    if (ok && (include_ctap21_info_fields || capabilities->advertise_nfc_transport)) {
+    if (ok && include_ctap21_info_fields) {
         ok = zf_cbor_encode_uint(&enc, 9) && zf_cbor_encode_array(&enc, transports_count) &&
-             (!capabilities->advertise_usb_transport || zf_cbor_encode_text(&enc, "usb")) &&
-             (!capabilities->advertise_nfc_transport || zf_cbor_encode_text(&enc, "nfc"));
+             (!capabilities->advertise_usb_transport || zf_cbor_encode_text(&enc, "usb"));
     }
 #endif
 

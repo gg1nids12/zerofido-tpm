@@ -20,13 +20,11 @@
 #include <string.h>
 
 #include "../transport/adapter.h"
-#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY)
 #include "../transport/ble_link.h"
 #endif
-#if defined(ZF_USB_ONLY)
+#ifdef ZF_USB_ONLY
 #include "../transport/usb_hid_worker.h"
-#elif defined(ZF_NFC_ONLY)
-#include "../transport/nfc_worker.h"
 #endif
 #include "../u2f/adapter.h"
 #include "../zerofido_attestation.h"
@@ -165,13 +163,9 @@ static ZfStorageInitStatus zf_app_lifecycle_init_storage(ZerofidoApp *app) {
     return ZfStorageInitOk;
 }
 
-#if !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if !defined(ZF_USB_ONLY)
 static const ZfTransportAdapterOps *zf_app_lifecycle_adapter_for_mode(ZfTransportMode mode) {
     switch (mode) {
-#if ZF_NFC_ENABLED
-    case ZfTransportModeNfc:
-        return &zf_transport_nfc_adapter;
-#endif
 #if ZF_BLE_ENABLED
     case ZfTransportModeBle:
         return &zf_transport_ble_adapter;
@@ -188,7 +182,7 @@ static void zf_app_lifecycle_load_runtime_config(ZerofidoApp *app) {
 
     zf_runtime_config_load(app->storage, &runtime_config);
     zf_runtime_config_apply(app, &runtime_config);
-#if !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if !defined(ZF_USB_ONLY)
     app->transport_adapter = zf_app_lifecycle_adapter_for_mode(app->runtime_config.transport_mode);
 #endif
 }
@@ -221,12 +215,9 @@ static bool zf_app_lifecycle_start_worker(ZerofidoApp *app) {
         return false;
     }
 
-#if defined(ZF_USB_ONLY)
+#ifdef ZF_USB_ONLY
     int32_t (*worker)(void *) = zf_transport_usb_hid_worker;
     worker_stack_size = 6 * 1024;
-#elif defined(ZF_NFC_ONLY)
-    int32_t (*worker)(void *) = zf_transport_nfc_worker;
-    worker_stack_size = 4 * 1024;
 #else
     if (!app->transport_adapter || !app->transport_adapter->worker) {
         return false;
@@ -243,7 +234,7 @@ static bool zf_app_lifecycle_start_worker(ZerofidoApp *app) {
     }
     furi_mutex_release(app->ui_mutex);
 
-#if defined(ZF_USB_ONLY) || defined(ZF_NFC_ONLY)
+#ifdef ZF_USB_ONLY
     thread = furi_thread_alloc_ex("ZeroFIDOWorker", worker_stack_size, worker, app);
 #else
     thread = furi_thread_alloc_ex("ZeroFIDOWorker", worker_stack_size,
@@ -303,7 +294,7 @@ ZerofidoApp *zf_app_lifecycle_alloc(void) {
     app->running = true;
     app->ui_events_enabled = true;
     zf_runtime_config_load_defaults(&app->runtime_config);
-#if !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if !defined(ZF_USB_ONLY)
     app->transport_adapter = zf_app_lifecycle_adapter_for_mode(app->runtime_config.transport_mode);
 #endif
     zf_runtime_config_apply(app, &app->runtime_config);
@@ -336,7 +327,7 @@ bool zf_app_lifecycle_startup(ZerofidoApp *app) {
         zerofido_ui_set_status(app, NULL);
     }
 
-#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY)
     /*
      * tpm branch (2026-11-05): Bluetooth LE FIDO for Windows. The profile stays
      * up for the whole session; a BLE request switches the active transport.
@@ -480,7 +471,7 @@ bool zf_app_lifecycle_restart_transport(ZerofidoApp *app) {
     }
 
     zf_app_lifecycle_stop_worker(app);
-#if !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if !defined(ZF_USB_ONLY)
     app->transport_adapter = zf_app_lifecycle_adapter_for_mode(app->runtime_config.transport_mode);
 #endif
     if (!(app->capabilities.fido2_enabled || app->capabilities.u2f_enabled)) {
@@ -492,10 +483,10 @@ bool zf_app_lifecycle_restart_transport(ZerofidoApp *app) {
 
 /*
  * tpm branch (2026-11-05): switch the active transport without saving it.
- * Used by the automatic cable-based switch (cable -> USB, no cable -> NFC).
+ * Used by the automatic cable-based switch (cable -> USB, no cable -> BLE).
  */
 bool zf_app_lifecycle_switch_transport_runtime(ZerofidoApp *app, ZfTransportMode mode) {
-#if defined(ZF_USB_ONLY) || defined(ZF_NFC_ONLY)
+#ifdef ZF_USB_ONLY
     UNUSED(app);
     UNUSED(mode);
     return false;
@@ -503,7 +494,7 @@ bool zf_app_lifecycle_switch_transport_runtime(ZerofidoApp *app, ZfTransportMode
     ZfRuntimeConfig previous_config;
     ZfRuntimeConfig next_config;
 
-    if (!app || (mode != ZfTransportModeUsbHid && mode != ZfTransportModeNfc &&
+    if (!app || (mode != ZfTransportModeUsbHid &&
                  !(ZF_BLE_ENABLED && mode == ZfTransportModeBle && app->ble_link))) {
         return false;
     }
@@ -523,46 +514,6 @@ bool zf_app_lifecycle_switch_transport_runtime(ZerofidoApp *app, ZfTransportMode
 #endif
 }
 
-bool zf_app_lifecycle_set_transport_mode(ZerofidoApp *app, Storage *storage, ZfTransportMode mode) {
-    ZfRuntimeConfig previous_config;
-    ZfRuntimeConfig next_config;
-
-    if (!app || (mode != ZfTransportModeUsbHid && mode != ZfTransportModeNfc)) {
-        return false;
-    }
-#if defined(ZF_USB_ONLY)
-    if (mode != ZfTransportModeUsbHid) {
-        return false;
-    }
-#elif defined(ZF_NFC_ONLY)
-    if (mode != ZfTransportModeNfc) {
-        return false;
-    }
-#endif
-
-    previous_config = app->runtime_config;
-    if (previous_config.transport_mode == mode) {
-        return true;
-    }
-
-    next_config = previous_config;
-    next_config.transport_mode = mode;
-    zf_runtime_config_apply(app, &next_config);
-    if (!zf_app_lifecycle_restart_transport(app)) {
-        zf_runtime_config_apply(app, &previous_config);
-        (void)zf_app_lifecycle_restart_transport(app);
-        return false;
-    }
-
-    if (!zf_runtime_config_persist(storage, &next_config)) {
-        zf_runtime_config_apply(app, &previous_config);
-        (void)zf_app_lifecycle_restart_transport(app);
-        return false;
-    }
-
-    return true;
-}
-
 void zf_app_lifecycle_shutdown(ZerofidoApp *app) {
     furi_mutex_acquire(app->ui_mutex, FuriWaitForever);
     app->running = false;
@@ -570,7 +521,7 @@ void zf_app_lifecycle_shutdown(ZerofidoApp *app) {
     furi_mutex_release(app->ui_mutex);
     zf_app_lifecycle_wait_startup(app);
     zf_app_lifecycle_stop_worker(app);
-#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY)
     /* Back to the default Flipper Bluetooth before the app code unloads. */
     zf_ble_link_stop(app->ble_link);
     app->ble_link = NULL;

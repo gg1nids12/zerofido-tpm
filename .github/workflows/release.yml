@@ -97,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          for profile in nfc usb full; do
+          for profile in usb full; do
             echo "Building ${profile}"
             ZEROFIDO_PROFILE="${profile}" uv run python -m ufbt
             uv run python host_tools/package_release.py \
@@ -119,7 +119,7 @@ jobs:
             echo
             echo "| Profile | Release FAP bytes |"
             echo "| --- | ---: |"
-            for profile in nfc usb full; do
+            for profile in usb full; do
               size="$(wc -c < "zerofido-${profile}-release.fap")"
               echo "| ${profile} | ${size} |"
             done

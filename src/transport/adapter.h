@@ -36,21 +36,22 @@ typedef struct {
     uint8_t (*poll_cbor_control)(ZerofidoApp *app, ZfTransportSessionId current_session_id);
 } ZfTransportAdapterOps;
 
-/* tpm branch: keepalive during long command work (no-op on NFC). */
+/* tpm branch: keepalive during long command work. */
 void zf_transport_processing_keepalive(ZerofidoApp *app, ZfTransportSessionId current_session_id);
 
 /*
  * Transport adapters let CTAP/U2F command code be agnostic to USB HID versus
- * NFC. Each adapter owns its worker loop, response publication, keepalive/cancel
- * polling, and local user-interaction waiting semantics.
+ * Bluetooth LE. Each adapter owns its worker loop, response publication,
+ * keepalive/cancel polling, and local user-interaction waiting semantics.
+ *
+ * tpm branch (2026-11-06): the NFC adapter is gone with the NFC transport
+ * (owner: "NFC out of the project — too complicated and not needed"). The
+ * upstream project still has it; see README.
  */
-#if !defined(ZF_NFC_ONLY) && !defined(ZF_USB_ONLY)
+#ifndef ZF_USB_ONLY
 extern const ZfTransportAdapterOps zf_transport_usb_hid_adapter;
 #endif
-#if !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY) && ZF_NFC_ENABLED
-extern const ZfTransportAdapterOps zf_transport_nfc_adapter;
-#endif
-#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY)
 extern const ZfTransportAdapterOps zf_transport_ble_adapter;
 #endif
 

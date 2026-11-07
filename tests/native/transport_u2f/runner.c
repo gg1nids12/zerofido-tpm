@@ -17,21 +17,13 @@
 #include "mbedtls/ecdsa.h"
 #include "mbedtls/md.h"
 #include "mbedtls/sha256.h"
-#include "nfc/helpers/iso14443_crc.h"
-#include "nfc/nfc.h"
-#include "nfc/nfc_listener.h"
-#include "nfc/protocols/iso14443_3a/iso14443_3a_listener.h"
-#include "nfc/protocols/iso14443_4a/iso14443_4a.h"
-#include "nfc/protocols/iso14443_4a/iso14443_4a_listener.h"
 #include "storage/storage.h"
-#include "toolbox/bit_buffer.h"
 #include "crypto/ecdsa_der.h"
 #include "zerofido_crypto.h"
 #include "zerofido_ui_format.h"
-#include "lib/toolbox/simple_array.h"
 
 /*
- * Host-native transport/U2F regression harness. It stubs USB, NFC, storage, UI,
+ * Host-native transport/U2F regression harness. It stubs USB, storage, UI,
  * and crypto boundaries so the production transport and U2F modules can be
  * tested as compiled C on the workstation.
  */
@@ -42,14 +34,11 @@
 #define FURI_LOG_D(tag, fmt, ...) ((void)0)
 #define furi_assert(expr) ((void)(expr))
 
-static void test_furi_log_i(const char *tag, const char *fmt, ...);
-#define FURI_LOG_I test_furi_log_i
+#define FURI_LOG_I(tag, fmt, ...) ((void)0)
 
 typedef int FuriStatus;
 typedef struct ZerofidoApp ZerofidoApp;
 static bool test_transport_auto_accept_enabled(const ZerofidoApp *app);
-static size_t test_nfc_requeue_during_ctap2(ZerofidoApp *app, uint8_t *response,
-                                            size_t response_capacity);
 
 struct Storage {
     int unused;
@@ -113,38 +102,6 @@ struct BitBuffer {
     size_t capacity;
 };
 
-struct SimpleArray {
-    const SimpleArrayConfig *config;
-    uint8_t *data;
-    uint32_t count;
-};
-
-struct Nfc {
-    uint32_t fdt_listen_fc;
-    NfcMode mode;
-    NfcTech tech;
-    bool started;
-    bool stopped;
-    uint8_t uid[10];
-    uint8_t uid_len;
-    uint8_t atqa[2];
-    uint8_t sak;
-};
-
-struct NfcListener {
-    Nfc *nfc;
-    NfcGenericCallback callback;
-    void *context;
-    NfcProtocol protocol;
-    const NfcDeviceData *data;
-    bool started;
-    bool stopped;
-};
-
-struct Iso14443_4aListener {
-    int unused;
-};
-
 #define FuriStatusOk 0
 #define FuriFlagError 0x80000000U
 #define FuriFlagErrorTimeout 0xFFFFFFFEU
@@ -160,7 +117,6 @@ static size_t g_thread_flag_result_count = 0;
 static size_t g_thread_flag_result_index = 0;
 static uint32_t g_last_thread_flags_set = 0;
 static size_t g_thread_flags_set_count = 0;
-static FuriThread g_nfc_worker_thread;
 static uint32_t g_last_thread_wait_timeout = 0;
 static size_t g_thread_flag_wait_call_count = 0;
 static uint32_t g_last_delay_ms = 0;
@@ -186,25 +142,12 @@ static size_t g_notify_prompt_count = 0;
 static uint8_t g_last_hid_response[64];
 static size_t g_last_hid_response_len = 0;
 static size_t g_hid_response_count = 0;
-static uint8_t g_last_nfc_tx[320];
-static size_t g_last_nfc_tx_bits = 0;
-static size_t g_last_nfc_tx_len = 0;
-static size_t g_nfc_tx_count = 0;
-static bool g_nfc_alloc_result = true;
-static bool g_nfc_listener_alloc_result = true;
 static size_t g_mutex_max_depth = 0;
 static char g_last_status_text[64];
-static char g_last_log_text[192];
-static char g_log_text[4096];
-static size_t g_log_i_count = 0;
-static bool g_bit_buffer_scrub_on_reset = false;
 static bool g_ctap2_saw_transport_auto_accept = false;
 static bool g_ctap2_request_response_overlap = false;
-static bool g_ctap2_requeue_during_handle = false;
-static bool g_ctap2_requeued_arena_corrupted = false;
 static size_t g_ctap2_large_response_len = 0U;
 static bool g_get_info_builder_called = false;
-static bool g_get_info_builder_saw_nfc_transport = false;
 static bool g_get_info_builder_saw_usb_transport = false;
 static bool g_u2f_cert_assets_present = true;
 static bool g_u2f_cert_check_result = true;
@@ -247,40 +190,13 @@ static TestStorageFile g_storage_files[4];
 static FuriTimer g_timer_pool[8];
 static size_t g_timer_pool_count = 0;
 
-const SimpleArrayConfig simple_array_config_uint8_t = {
-    .init = NULL,
-    .reset = NULL,
-    .copy = NULL,
-    .type_size = sizeof(uint8_t),
-};
+;
 
 static void expect(bool condition, const char *message) {
     if (!condition) {
         fprintf(stderr, "FAIL: %s\n", message);
         exit(1);
     }
-}
-
-static void test_furi_log_i(const char *tag, const char *fmt, ...) {
-    char line[192];
-    size_t used = 0U;
-    va_list args;
-
-    UNUSED(tag);
-    va_start(args, fmt);
-    vsnprintf(line, sizeof(line), fmt, args);
-    va_end(args);
-
-    snprintf(g_last_log_text, sizeof(g_last_log_text), "%s", line);
-    used = strlen(g_log_text);
-    if (used < sizeof(g_log_text) - 1U) {
-        snprintf(&g_log_text[used], sizeof(g_log_text) - used, "%s%s", used ? "\n" : "", line);
-    }
-    g_log_i_count++;
-}
-
-static bool test_log_contains(const char *needle) {
-    return needle && strstr(g_log_text, needle) != NULL;
 }
 
 static void test_reset(void) {
@@ -293,7 +209,6 @@ static void test_reset(void) {
     g_thread_flag_result_index = 0;
     g_last_thread_flags_set = 0;
     g_thread_flags_set_count = 0;
-    memset(&g_nfc_worker_thread, 0, sizeof(g_nfc_worker_thread));
     g_last_thread_wait_timeout = 0;
     g_thread_flag_wait_call_count = 0;
     g_last_delay_ms = 0;
@@ -319,25 +234,12 @@ static void test_reset(void) {
     memset(g_last_hid_response, 0, sizeof(g_last_hid_response));
     g_last_hid_response_len = 0;
     g_hid_response_count = 0;
-    memset(g_last_nfc_tx, 0, sizeof(g_last_nfc_tx));
-    g_last_nfc_tx_bits = 0;
-    g_last_nfc_tx_len = 0;
-    g_nfc_tx_count = 0;
-    g_nfc_alloc_result = true;
-    g_nfc_listener_alloc_result = true;
     g_mutex_max_depth = 0;
     memset(g_last_status_text, 0, sizeof(g_last_status_text));
-    memset(g_last_log_text, 0, sizeof(g_last_log_text));
-    memset(g_log_text, 0, sizeof(g_log_text));
-    g_log_i_count = 0;
-    g_bit_buffer_scrub_on_reset = false;
     g_ctap2_saw_transport_auto_accept = false;
     g_ctap2_request_response_overlap = false;
-    g_ctap2_requeue_during_handle = false;
-    g_ctap2_requeued_arena_corrupted = false;
     g_ctap2_large_response_len = 0U;
     g_get_info_builder_called = false;
-    g_get_info_builder_saw_nfc_transport = false;
     g_get_info_builder_saw_usb_transport = false;
     g_u2f_cert_assets_present = true;
     g_u2f_cert_check_result = true;
@@ -583,329 +485,6 @@ void furi_timer_stop(FuriTimer *timer) {
     expect(timer != NULL, "timer stop should receive a timer");
     timer->stop_count++;
     timer->running = false;
-}
-
-BitBuffer *bit_buffer_alloc(size_t capacity) {
-    BitBuffer *buffer = malloc(sizeof(*buffer));
-
-    expect(buffer != NULL, "bit buffer allocation should succeed");
-    buffer->data = malloc(capacity);
-    expect(buffer->data != NULL, "bit buffer storage allocation should succeed");
-    buffer->size_bits = 0;
-    buffer->size_bytes = 0;
-    buffer->capacity = capacity;
-    return buffer;
-}
-
-void bit_buffer_free(BitBuffer *buffer) {
-    if (buffer) {
-        free(buffer->data);
-        free(buffer);
-    }
-}
-
-void bit_buffer_reset(BitBuffer *buffer) {
-    expect(buffer != NULL, "bit buffer reset should receive a buffer");
-    if (g_bit_buffer_scrub_on_reset) {
-        memset(buffer->data, 0xEE, buffer->capacity);
-    }
-    buffer->size_bits = 0;
-    buffer->size_bytes = 0;
-}
-
-void bit_buffer_append_bytes(BitBuffer *buffer, const uint8_t *data, size_t size) {
-    expect(buffer != NULL, "bit buffer append should receive a buffer");
-    expect((buffer->size_bits % 8U) == 0U, "bit buffer byte append should be byte-aligned");
-    expect(buffer->size_bytes + size <= buffer->capacity, "bit buffer append should fit capacity");
-    if (size > 0) {
-        memcpy(&buffer->data[buffer->size_bytes], data, size);
-        buffer->size_bytes += size;
-        buffer->size_bits = buffer->size_bytes * 8U;
-    }
-}
-
-size_t bit_buffer_get_size(const BitBuffer *buffer) {
-    expect(buffer != NULL, "bit buffer bit size should receive a buffer");
-    return buffer->size_bits;
-}
-
-size_t bit_buffer_get_size_bytes(const BitBuffer *buffer) {
-    expect(buffer != NULL, "bit buffer size should receive a buffer");
-    return buffer->size_bytes;
-}
-
-uint8_t *bit_buffer_get_data(const BitBuffer *buffer) {
-    expect(buffer != NULL, "bit buffer data should receive a buffer");
-    return buffer->data;
-}
-
-void bit_buffer_set_byte(BitBuffer *buffer, size_t index, uint8_t byte) {
-    expect(buffer != NULL, "bit buffer set byte should receive a buffer");
-    expect(index < buffer->capacity, "bit buffer set byte should fit capacity");
-    buffer->data[index] = byte;
-}
-
-void bit_buffer_set_size(BitBuffer *buffer, size_t size_bits) {
-    size_t size_bytes = (size_bits + 7U) / 8U;
-
-    expect(buffer != NULL, "bit buffer set size should receive a buffer");
-    expect(size_bytes <= buffer->capacity, "bit buffer set size should fit capacity");
-    buffer->size_bits = size_bits;
-    buffer->size_bytes = size_bytes;
-}
-
-void iso14443_crc_append(Iso14443CrcType type, BitBuffer *buffer) {
-    UNUSED(type);
-    bit_buffer_append_bytes(buffer, (const uint8_t[]){0x00, 0x00}, 2);
-}
-
-bool iso14443_crc_check(Iso14443CrcType type, const BitBuffer *buffer) {
-    UNUSED(type);
-    return buffer && buffer->size_bytes >= 2;
-}
-
-void iso14443_crc_trim(BitBuffer *buffer) {
-    expect(buffer != NULL, "crc trim should receive a buffer");
-    expect(buffer->size_bytes >= 2, "crc trim should only run on frames with crc bytes");
-    buffer->size_bytes -= 2;
-    buffer->size_bits = buffer->size_bytes * 8U;
-}
-
-Nfc *nfc_alloc(void) {
-    if (!g_nfc_alloc_result) {
-        return NULL;
-    }
-
-    Nfc *nfc = malloc(sizeof(*nfc));
-
-    expect(nfc != NULL, "nfc allocation should succeed");
-    memset(nfc, 0, sizeof(*nfc));
-    return nfc;
-}
-
-void nfc_free(Nfc *nfc) {
-    free(nfc);
-}
-
-void nfc_start(Nfc *nfc, NfcEventCallback callback, void *context) {
-    expect(nfc != NULL, "nfc_start should receive a device");
-    UNUSED(callback);
-    UNUSED(context);
-    nfc->started = true;
-}
-
-void nfc_stop(Nfc *nfc) {
-    if (nfc) {
-        nfc->stopped = true;
-    }
-}
-
-NfcListener *nfc_listener_alloc(Nfc *nfc, NfcProtocol protocol, const NfcDeviceData *data) {
-    if (!g_nfc_listener_alloc_result) {
-        return NULL;
-    }
-
-    NfcListener *listener = malloc(sizeof(*listener));
-
-    expect(listener != NULL, "nfc listener allocation should succeed");
-    memset(listener, 0, sizeof(*listener));
-    listener->nfc = nfc;
-    listener->protocol = protocol;
-    listener->data = data;
-    return listener;
-}
-
-void nfc_listener_free(NfcListener *instance) {
-    free(instance);
-}
-
-void nfc_listener_start(NfcListener *instance, NfcGenericCallback callback, void *context) {
-    expect(instance != NULL, "nfc_listener_start should receive a listener");
-    instance->callback = callback;
-    instance->context = context;
-    instance->started = true;
-}
-
-void nfc_listener_stop(NfcListener *instance) {
-    if (instance) {
-        instance->stopped = true;
-    }
-}
-
-void nfc_set_fdt_listen_fc(Nfc *nfc, uint32_t fdt_listen_fc) {
-    expect(nfc != NULL, "nfc_set_fdt_listen_fc should receive a device");
-    nfc->fdt_listen_fc = fdt_listen_fc;
-}
-
-void nfc_config(Nfc *nfc, NfcMode mode, NfcTech tech) {
-    expect(nfc != NULL, "nfc_config should receive a device");
-    nfc->mode = mode;
-    nfc->tech = tech;
-}
-
-NfcError nfc_listener_tx(Nfc *nfc, const BitBuffer *buffer) {
-    UNUSED(nfc);
-    expect(buffer != NULL, "nfc_listener_tx should receive a frame buffer");
-    expect(buffer->size_bytes <= sizeof(g_last_nfc_tx), "nfc tx frame should fit capture");
-    memcpy(g_last_nfc_tx, buffer->data, buffer->size_bytes);
-    g_last_nfc_tx_bits = buffer->size_bits;
-    g_last_nfc_tx_len = buffer->size_bytes;
-    g_nfc_tx_count++;
-    return NfcErrorNone;
-}
-
-void nfc_iso14443a_listener_set_col_res_data(Nfc *nfc, const uint8_t *uid, uint8_t uid_len,
-                                             const uint8_t *atqa, uint8_t sak) {
-    expect(nfc != NULL, "nfc collision-response setup should receive a device");
-    expect(uid_len <= sizeof(nfc->uid), "nfc uid should fit the test stub");
-    memcpy(nfc->uid, uid, uid_len);
-    nfc->uid_len = uid_len;
-    memcpy(nfc->atqa, atqa, sizeof(nfc->atqa));
-    nfc->sak = sak;
-}
-
-void iso14443_3a_set_atqa(Iso14443_3aData *data, const uint8_t atqa[2]) {
-    expect(data != NULL, "iso14443_3a_set_atqa should receive data");
-    memcpy(data->atqa, atqa, 2);
-}
-
-void iso14443_3a_set_sak(Iso14443_3aData *data, uint8_t sak) {
-    expect(data != NULL, "iso14443_3a_set_sak should receive data");
-    data->sak = sak;
-}
-
-Iso14443_4aData *iso14443_4a_alloc(void) {
-    Iso14443_4aData *data = malloc(sizeof(*data));
-
-    expect(data != NULL, "iso14443_4a allocation should succeed");
-    memset(data, 0, sizeof(*data));
-    data->iso14443_3a_data = malloc(sizeof(*data->iso14443_3a_data));
-    expect(data->iso14443_3a_data != NULL, "iso14443_4a base allocation should succeed");
-    memset(data->iso14443_3a_data, 0, sizeof(*data->iso14443_3a_data));
-    data->ats_data.t1_tk = simple_array_alloc(&simple_array_config_uint8_t);
-    return data;
-}
-
-void iso14443_4a_free(Iso14443_4aData *data) {
-    if (data) {
-        simple_array_free(data->ats_data.t1_tk);
-        free(data->iso14443_3a_data);
-        free(data);
-    }
-}
-
-void iso14443_4a_reset(Iso14443_4aData *data) {
-    expect(data != NULL, "iso14443_4a_reset should receive data");
-    memset(data->iso14443_3a_data, 0, sizeof(*data->iso14443_3a_data));
-    data->ats_data.tl = 1;
-    data->ats_data.t0 = 0;
-    data->ats_data.ta_1 = 0;
-    data->ats_data.tb_1 = 0;
-    data->ats_data.tc_1 = 0;
-    simple_array_reset(data->ats_data.t1_tk);
-}
-
-void iso14443_4a_set_uid(Iso14443_4aData *data, const uint8_t *uid, size_t uid_len) {
-    expect(data != NULL, "iso14443_4a_set_uid should receive data");
-    expect(uid_len <= sizeof(data->iso14443_3a_data->uid),
-           "iso14443_4a uid should fit the test stub");
-    memcpy(data->iso14443_3a_data->uid, uid, uid_len);
-    data->iso14443_3a_data->uid_len = (uint8_t)uid_len;
-}
-
-const uint8_t *iso14443_4a_get_uid(const Iso14443_4aData *data, size_t *uid_len) {
-    expect(data != NULL, "iso14443_4a_get_uid should receive data");
-    expect(uid_len != NULL, "iso14443_4a_get_uid should receive a length pointer");
-    *uid_len = data->iso14443_3a_data->uid_len;
-    return data->iso14443_3a_data->uid;
-}
-
-Iso14443_3aData *iso14443_4a_get_base_data(Iso14443_4aData *data) {
-    expect(data != NULL, "iso14443_4a_get_base_data should receive data");
-    return data->iso14443_3a_data;
-}
-
-SimpleArray *simple_array_alloc(const SimpleArrayConfig *config) {
-    SimpleArray *instance = malloc(sizeof(*instance));
-
-    expect(instance != NULL, "simple_array allocation should succeed");
-    instance->config = config;
-    instance->data = NULL;
-    instance->count = 0;
-    return instance;
-}
-
-void simple_array_free(SimpleArray *instance) {
-    if (instance) {
-        free(instance->data);
-        free(instance);
-    }
-}
-
-void simple_array_init(SimpleArray *instance, uint32_t count) {
-    expect(instance != NULL, "simple_array_init should receive an instance");
-    free(instance->data);
-    instance->data = NULL;
-    instance->count = count;
-    if (count == 0) {
-        return;
-    }
-    instance->data = calloc(count, instance->config->type_size);
-    expect(instance->data != NULL, "simple_array_init should allocate backing storage");
-}
-
-void simple_array_reset(SimpleArray *instance) {
-    expect(instance != NULL, "simple_array_reset should receive an instance");
-    free(instance->data);
-    instance->data = NULL;
-    instance->count = 0;
-}
-
-void simple_array_copy(SimpleArray *instance, const SimpleArray *other) {
-    expect(instance != NULL, "simple_array_copy should receive a destination");
-    expect(other != NULL, "simple_array_copy should receive a source");
-    simple_array_init(instance, other->count);
-    if (other->count != 0) {
-        memcpy(instance->data, other->data, other->count * instance->config->type_size);
-    }
-}
-
-bool simple_array_is_equal(const SimpleArray *instance, const SimpleArray *other) {
-    if (instance == other) {
-        return true;
-    }
-    if (!instance || !other || instance->count != other->count) {
-        return false;
-    }
-    return instance->count == 0 ||
-           memcmp(instance->data, other->data, instance->count * instance->config->type_size) == 0;
-}
-
-uint32_t simple_array_get_count(const SimpleArray *instance) {
-    expect(instance != NULL, "simple_array_get_count should receive an instance");
-    return instance->count;
-}
-
-SimpleArrayElement *simple_array_get(SimpleArray *instance, uint32_t index) {
-    expect(instance != NULL, "simple_array_get should receive an instance");
-    expect(index < instance->count, "simple_array_get index should be in range");
-    return &instance->data[index * instance->config->type_size];
-}
-
-const SimpleArrayElement *simple_array_cget(const SimpleArray *instance, uint32_t index) {
-    expect(instance != NULL, "simple_array_cget should receive an instance");
-    expect(index < instance->count, "simple_array_cget index should be in range");
-    return &instance->data[index * instance->config->type_size];
-}
-
-SimpleArrayData *simple_array_get_data(SimpleArray *instance) {
-    expect(instance != NULL, "simple_array_get_data should receive an instance");
-    return instance->data;
-}
-
-const SimpleArrayData *simple_array_cget_data(const SimpleArray *instance) {
-    expect(instance != NULL, "simple_array_cget_data should receive an instance");
-    return instance->data;
 }
 
 static TestStorageFile *test_storage_file_slot(const char *path, bool create) {
@@ -1478,9 +1057,6 @@ size_t zerofido_handle_ctap2(ZerofidoApp *app, uint32_t cid, const uint8_t *requ
     }
 
     g_ctap2_request_response_overlap = request == response;
-    if (g_ctap2_requeue_during_handle) {
-        return test_nfc_requeue_during_ctap2(app, response, response_capacity);
-    }
     if (request[0] == ZfCtapeCmdGetInfo) {
         response[0] = ZF_CTAP_SUCCESS;
         response[1] = 0xA0;
@@ -1850,46 +1426,6 @@ void mbedtls_sha256_finish(mbedtls_sha256_context *ctx, unsigned char output[32]
 #include "../../../src/transport/dispatch.c"
 #include "../../../src/transport/usb_hid_session.c"
 #include "../../../src/transport/usb_hid_worker.c"
-#include "../../../src/transport/nfc_trace.c"
-#include "../../../src/transport/nfc_protocol.c"
-#include "../../../src/transport/nfc_iso_dep.c"
-#include "../../../src/transport/nfc_session.c"
-#include "../../../src/transport/nfc_dispatch.c"
-#include "../../../src/transport/nfc_engine.c"
-#include "../../../src/transport/nfc_worker.c"
-
-static size_t test_nfc_requeue_during_ctap2(ZerofidoApp *app, uint8_t *response,
-                                            size_t response_capacity) {
-    static const uint8_t queued_request[] = {ZfCtapeCmdGetAssertion};
-    ZfNfcTransportState *state = &app->transport_nfc_state_storage;
-    uint8_t *queued_arena = NULL;
-
-    g_ctap2_requeue_during_handle = false;
-    if (!response || response_capacity < 2U) {
-        return 0U;
-    }
-
-    furi_mutex_acquire(app->ui_mutex, FuriWaitForever);
-    zf_transport_nfc_reset_exchange_locked(state);
-    expect(zf_transport_nfc_queue_request_locked(app, state, ZfNfcRequestKindCtap2, queued_request,
-                                                 sizeof(queued_request)),
-           "CTAP handler requeue should install a fresh NFC request");
-    queued_arena = app->transport_arena;
-    furi_mutex_release(app->ui_mutex);
-
-    response[0] = ZF_CTAP_SUCCESS;
-    response[1] = 0xA5;
-
-    furi_mutex_acquire(app->ui_mutex, FuriWaitForever);
-    expect(app->transport_arena == queued_arena && app->transport_arena != NULL,
-           "requeued NFC request should keep its transport arena");
-    g_ctap2_requeued_arena_corrupted =
-        app->transport_arena[0] != queued_request[0] ||
-        app->transport_nfc_state_storage.request_len != sizeof(queued_request);
-    furi_mutex_release(app->ui_mutex);
-
-    return 2U;
-}
 
 static bool test_transport_auto_accept_enabled(const ZerofidoApp *app) {
     return app && app->transport_auto_accept_transaction;
@@ -1900,8 +1436,6 @@ uint8_t zf_ctap_build_get_info_response(const ZfResolvedCapabilities *capabiliti
                                         size_t *out_len) {
     UNUSED(client_pin_set);
     g_get_info_builder_called = true;
-    g_get_info_builder_saw_nfc_transport =
-        capabilities && capabilities->nfc_enabled && capabilities->advertise_nfc_transport;
     g_get_info_builder_saw_usb_transport =
         capabilities && capabilities->usb_hid_enabled && capabilities->advertise_usb_transport;
     expect(out != NULL && out_capacity > 0 && out_len != NULL,
@@ -1915,116 +1449,10 @@ bool zerofido_pin_is_set(const ZfClientPinState *state) {
     return state && state->pin_set;
 }
 
-static size_t test_nfc_payload_len(void) {
-    expect(g_last_nfc_tx_len >= 3, "nfc frame should include pcb and crc");
-    return g_last_nfc_tx_len - 3;
-}
-
-static const uint8_t *test_nfc_payload(void) {
-    expect(g_last_nfc_tx_len >= 3, "nfc frame should include pcb and crc");
-    return &g_last_nfc_tx[1];
-}
-
-static void test_nfc_init_app(ZerofidoApp *app, FuriMutex *mutex) {
-    memset(app, 0, sizeof(*app));
-    app->ui_mutex = mutex;
-    app->transport_adapter = &zf_transport_nfc_adapter;
-    app->transport_state = &app->transport_nfc_state_storage;
-    app->worker_thread = &g_nfc_worker_thread;
-    app->transport_nfc_state_storage.nfc = nfc_alloc();
-    app->transport_nfc_state_storage.tx_buffer = bit_buffer_alloc(320U);
-    app->transport_nfc_state_storage.iso14443_4a_data = iso14443_4a_alloc();
-    expect(zf_app_transport_arena_acquire(app), "NFC test app should allocate transport arena");
-    zf_transport_nfc_attach_arena(&app->transport_nfc_state_storage, app->transport_arena,
-                                  zf_app_transport_arena_capacity(app));
-    zf_transport_nfc_prepare_listener(&app->transport_nfc_state_storage);
-    app->transport_nfc_state_storage.listener_active = true;
-}
-
-static void test_nfc_deinit_app(ZerofidoApp *app);
-
-#include "subsystems/nfc/tests.inc"
 #include "subsystems/u2f/tests.inc"
 #include "subsystems/transport/tests.inc"
 
 int main(void) {
-    test_nfc_listener_profile_is_valid_iso14443_4a();
-    test_nfc_select_applet_accepts_p2_no_fci();
-    test_nfc_select_applet_returns_fido2_version_when_u2f_disabled();
-    test_nfc_select_applet_accepts_le_and_legacy_nine_byte_aid();
-    test_nfc_event_callback_accepts_bare_select_apdu();
-    test_nfc_iso4_listener_event_decodes_block_and_sends_framed_response();
-    test_nfc_iso4_duplicate_complete_i_block_replays_response();
-    test_nfc_iso4_duplicate_final_chain_block_replays_response();
-    test_nfc_duplicate_i_block_preserves_tx_chain_pcb();
-    test_nfc_iso4_listener_raw60_returns_unsupported_via_send_block();
-    test_nfc_iso4_listener_native_desfire_payload_is_not_parsed_as_apdu();
-    test_nfc_desfire_deselect_sleeps_before_next_activation();
-    test_nfc_3a_rats_sends_ats_with_public_tx();
-    test_nfc_3a_repeated_rats_resends_ats_instead_of_iso4_block();
-    test_nfc_3a_reqa_data_resets_active_iso_dep_session();
-    test_nfc_3a_iso_dep_select_decodes_and_responds();
-    test_nfc_3a_r_nak_replays_last_iso_response();
-    test_nfc_control_frame_does_not_corrupt_cached_replay();
-    test_nfc_3a_r_ack_advances_chained_response_and_r_nak_replays();
-    test_nfc_make_credential_sized_response_uses_single_i_block();
-    test_nfc_terminal_r_ack_after_chained_response_keeps_fido_selected();
-    test_nfc_post_success_cooldown_allows_new_fido_select();
-    test_nfc_3a_empty_i_block_replays_cached_large_response_before_helper();
-    test_nfc_3a_empty_i_block_replays_encoded_frame_when_cache_flag_missing();
-    test_nfc_3a_late_pps_then_r_nak_replays_cached_large_response();
-    test_nfc_3a_late_pps_frame_is_acknowledged();
-    test_nfc_framed_select_response_uses_reader_block_number();
-    test_nfc_cache_last_iso_response_handles_frame_buffer_alias();
-    test_nfc_unadvertised_cid_frame_is_ignored();
-    test_nfc_ndef_type4_select_is_rejected_for_fido_only_surface();
-    test_nfc_applet_select_is_required_before_ctap2();
-    test_nfc_preselect_apdu_80_60_reports_instruction_not_supported();
-    test_nfc_preselect_wrapped_apdu_90_60_bootstraps_fido_applet();
-    test_nfc_preselect_wrapped_apdu_90_af_reports_cla_not_supported();
-    test_nfc_preselect_wrapped_desfire_get_version_does_not_sequence();
-    test_nfc_selected_wrapped_desfire_get_version_is_terminal_unsupported();
-    test_nfc_event_callback_bare_90_60_bootstraps_fido_applet();
-    test_nfc_iso4_listener_bare_90_60_is_iso_dep_framed();
-    test_nfc_ctap2_get_info_returns_immediately();
-    test_nfc_ctap2_get_info_accepts_webkit_extended_apdu();
-    test_nfc_iso4_listener_extended_get_info_is_iso_dep_framed();
-    test_nfc_iso4_listener_ctap2_msg_signals_worker_after_unlock();
-    test_nfc_iso4_listener_busy_ctap2_retry_has_minimal_side_effects();
-    test_nfc_ctap2_msg_queues_worker_response();
-    test_nfc_ctap2_msg_without_get_response_returns_direct_response();
-    test_nfc_large_ctap2_msg_without_get_response_uses_iso_response_chaining();
-    test_nfc_packed_attestation_sized_extended_response_finishes_iso_dep_chain();
-    test_nfc_large_extended_ctap2_msg_without_get_response_uses_extended_response();
-    test_nfc_chained_ctap2_request_acknowledges_next_block_number();
-    test_nfc_duplicate_chained_i_block_does_not_corrupt_assembled_apdu();
-    test_nfc_duplicate_chained_i_block_stall_resets_exchange();
-    test_nfc_ctap2_msg_rejects_invalid_p1_p2();
-    test_nfc_ctap2_get_info_rejects_invalid_p1_p2();
-    test_nfc_locked_ctap2_get_info_does_not_reenter_ui_mutex();
-    test_nfc_stale_worker_completion_preserves_new_request();
-    test_nfc_worker_response_buffer_survives_requeued_request();
-    test_nfc_ctap_control_end_clears_selected_applet();
-    test_nfc_u2f_version_returns_immediately();
-    test_nfc_u2f_version_fallback_selects_fido_surface();
-    test_nfc_u2f_disabled_rejects_immediately_without_processing();
-    test_nfc_u2f_check_only_authenticate_returns_immediately();
-    test_nfc_u2f_register_returns_without_status_update();
-    test_nfc_get_response_reports_remaining_bytes();
-    test_nfc_ctap_get_response_ins_11_rejects_processing_without_advertised_support();
-    test_nfc_ctap_get_response_ins_11_rejects_invalid_p1_p2();
-    test_nfc_ctap_get_response_ins_11_reports_processing_with_advertised_support();
-    test_nfc_busy_u2f_request_preserves_shared_arena();
-    test_nfc_ctap_get_response_ins_11_returns_ready_response();
-    test_nfc_field_off_marks_current_session_canceled();
-    test_nfc_preselect_raw60_sends_iso_status();
-    test_nfc_duplicate_native_desfire_af_replays_previous_frame();
-    test_nfc_repeated_native_desfire_probe_keeps_discovery_compatible();
-    test_nfc_native_desfire_preserves_existing_fido_replay();
-    test_nfc_wrapped_desfire_duplicate_replays_desfire_response();
-    test_nfc_raw60_does_not_make_next_framed_select_bare();
-    test_nfc_preselect_raw_native_probe_traces_halt();
-    test_nfc_selected_raw_native_probe_traces_selected_state();
     test_short_u2f_version_request_is_accepted();
     test_header_only_u2f_version_request_is_accepted_for_stock_compatibility();
     test_u2f_version_accepts_exact_response_buffer();
@@ -2056,9 +1484,6 @@ int main(void) {
     test_transport_processing_broadcast_init_recovers_channel();
     test_usb_restore_keeps_previous_config_after_restore_failure();
     test_usb_worker_polls_while_idle_and_assembling();
-    test_nfc_worker_waits_forever_while_idle();
-    test_nfc_worker_releases_transport_arena_on_listener_alloc_failure();
-    test_nfc_worker_releases_transport_arena_on_resource_alloc_failure();
     test_transport_worker_processes_disconnect_when_coalesced_with_interaction();
     test_wait_for_interaction_processes_disconnect_when_coalesced_with_completion();
     test_wait_for_interaction_sends_immediate_keepalive();

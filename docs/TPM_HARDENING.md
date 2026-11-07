@@ -20,8 +20,9 @@ Different from the plan below:
   enforced) — the owner wants "plug in, press OK" to work without a PIN.
 - Minimum PIN length is the CTAP minimum (4); a longer device minimum made Windows loop.
 - Names stay in clear on the SD card (F7 not done).
-- NFC is off by default (F9 moot for now); Bluetooth LE for Windows was added instead
-  ([BLUETOOTH.md](BLUETOOTH.md)).
+- The NFC transport was removed from the project on 2026-11-06 (owner: too complicated and
+  not needed), so F9 is gone with it; Bluetooth LE for Windows was added instead
+  ([BLUETOOTH.md](BLUETOOTH.md)). NFC still lives in upstream ZeroFIDO.
 
 Limits that software on this hardware cannot remove:
 
@@ -71,8 +72,8 @@ The upstream README already says physical access changes the risk model.
 - **F6. Store capacity is 32 records**, discoverable and non-discoverable together.
 - **F7. RP IDs and user names are stored in clear** on the SD card.
 - **F8. On-device PIN removal** must take bound credentials into account.
-- **F9. The iOS NFC path processes CTAP synchronously** (`send_ctap2_direct`), so long work
-  there may time out.
+- ~~**F9. The iOS NFC path processes CTAP synchronously**~~ — dropped: the NFC transport is no
+  longer part of this project.
 - **F10. USB long work sends no keepalive.** Keepalives are only sent while waiting for a
   button press.
 
@@ -131,8 +132,6 @@ K_rec    HKDF-SHA256(PMK, credential_id, "zerofido-cred-v1")
 
 - **USB (F10):** stretch in slices of about 50 ms, sending
   CTAPHID_KEEPALIVE(PROCESSING) and honouring CANCEL between slices.
-- **iOS NFC (F9):** measure the timing first. If about 1 s does not fit, either shorten the
-  stretch and require stricter PINs, or unlock on the device before tapping.
 
 ### Other
 
@@ -153,5 +152,5 @@ K_rec    HKDF-SHA256(PMK, credential_id, "zerofido-cred-v1")
 - **Host:** the upstream suites, plus new tests for the vault (create, right and wrong PIN,
   change, corruption), bound record round-trip, refusing to create discoverable credentials
   without a PIN, and the PMK wipe timer.
-- **Device:** calibrate N; test webauthn.io in Chrome, Edge and Firefox on Windows; test
-  iPhone and Android over NFC.
+- **Device:** calibrate N; test webauthn.io in Chrome, Edge and Firefox on Windows over USB
+  and over Bluetooth LE.

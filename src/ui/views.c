@@ -35,15 +35,8 @@
 #include "../zerofido_ui_i.h"
 #include "status.h"
 #include "../app/lifecycle.h"
-#include "../transport/nfc_xlog.h"
-#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY)
 #include "../transport/ble_link.h"
-#endif
-
-#if !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY) && ZF_NFC_ENABLED
-#define ZF_HAS_TRANSPORT_SETTING 1
-#else
-#define ZF_HAS_TRANSPORT_SETTING 0
 #endif
 
 #if ZF_PACKED_ATTESTATION
@@ -52,9 +45,7 @@
 #define ZF_HAS_ATTESTATION_SETTING 0
 #endif
 
-#if ZF_HAS_TRANSPORT_SETTING
-#define ZF_SETTINGS_FIRST_ITEM ZfSettingsItemTransport
-#elif ZF_AUTO_ACCEPT_REQUESTS
+#if ZF_AUTO_ACCEPT_REQUESTS
 #define ZF_SETTINGS_FIRST_ITEM ZfSettingsItemAutoAcceptRequests
 #elif ZF_DEV_FIDO2_1
 #define ZF_SETTINGS_FIRST_ITEM ZfSettingsItemFido2Profile
@@ -64,7 +55,7 @@
 #define ZF_SETTINGS_FIRST_ITEM ZfSettingsItemPin
 #endif
 
-#if ZF_HAS_TRANSPORT_SETTING || ZF_AUTO_ACCEPT_REQUESTS || ZF_DEV_FIDO2_1 || ZF_HAS_ATTESTATION_SETTING
+#if ZF_AUTO_ACCEPT_REQUESTS || ZF_DEV_FIDO2_1 || ZF_HAS_ATTESTATION_SETTING
 #define ZF_SETTINGS_USES_RUNTIME_CONFIG 1
 #else
 #define ZF_SETTINGS_USES_RUNTIME_CONFIG 0
@@ -111,7 +102,8 @@ static bool zerofido_dev_screenshot_save(ZerofidoApp *app, char *path, size_t pa
 #endif
 
 enum {
-    ZfSettingsItemTransport = 0,
+    /* tpm branch (2026-11-06): item 0 was "Transport: USB/NFC"; with NFC out of
+     * the project there is nothing to switch, so the item is gone. */
     ZfSettingsItemAutoAcceptRequests = 1,
     ZfSettingsItemFido2Profile = 2,
     ZfSettingsItemAttestation = 3,
@@ -443,13 +435,6 @@ static void zerofido_refresh_settings_menu(ZerofidoApp *app) {
 
     submenu_reset(app->settings_menu);
     submenu_set_header(app->settings_menu, "Settings");
-#if ZF_HAS_TRANSPORT_SETTING
-    char transport_label[24];
-    snprintf(transport_label, sizeof(transport_label), "Transport: %s",
-             runtime_config.transport_mode == ZfTransportModeNfc ? "NFC" : "USB HID");
-    submenu_add_item(app->settings_menu, transport_label, ZfSettingsItemTransport,
-                     zerofido_settings_menu_callback, app);
-#endif
 #if ZF_AUTO_ACCEPT_REQUESTS
     snprintf(auto_accept_label, sizeof(auto_accept_label), "Auto-approve: %s",
              runtime_config.auto_accept_requests ? "On" : "Off");
@@ -802,23 +787,6 @@ static void zerofido_settings_menu_callback(void *context, uint32_t index) {
 #endif
 
     switch (index) {
-#if ZF_HAS_TRANSPORT_SETTING
-    case ZfSettingsItemTransport: {
-        ZfTransportMode mode = runtime_config.transport_mode == ZfTransportModeUsbHid
-                                   ? ZfTransportModeNfc
-                                   : ZfTransportModeUsbHid;
-        if (zf_app_lifecycle_set_transport_mode(app, app->storage, mode)) {
-            zerofido_ui_set_status(app, mode == ZfTransportModeNfc ? "Transport: NFC"
-                                                                   : "Transport: USB HID");
-        } else {
-            zerofido_notify_error(app);
-            zerofido_ui_set_status(app, "Transport switch failed");
-        }
-        zerofido_refresh_settings_menu(app);
-        zerofido_ui_refresh_status_line(app);
-        break;
-    }
-#endif
 #if ZF_AUTO_ACCEPT_REQUESTS
     case ZfSettingsItemAutoAcceptRequests: {
         bool enabled = !runtime_config.auto_accept_requests;
@@ -1640,13 +1608,13 @@ static bool zerofido_navigation_callback(void *context) {
 
 /*
  * tpm branch (2026-11-05): one app for every mode (owner: "whoever connects,
- * we work with"). A USB cable (VBUS present) selects USB HID; no cable selects
- * NFC for phones. Only one transport runs at a time — both together do not fit
- * the Momentum heap. Switches after ~1.5 s of a stable cable state, never
- * during a pending approval.
+ * we work with"). A USB cable (VBUS present) selects USB HID; no cable leaves
+ * Bluetooth LE ready for a PC. Only one transport runs at a time — both
+ * together do not fit the Momentum heap. Switches after ~1.5 s of a stable
+ * cable state, never during a pending approval.
  */
 static void zerofido_auto_transport_tick(ZerofidoApp *app) {
-#if defined(ZF_USB_ONLY) || defined(ZF_NFC_ONLY)
+#ifdef ZF_USB_ONLY
     UNUSED(app);
 #else
     static uint32_t last_check = 0;
@@ -1661,7 +1629,7 @@ static void zerofido_auto_transport_tick(ZerofidoApp *app) {
     /*
      * tpm branch (2026-11-05): a request over Bluetooth takes over at once (the
      * link keeps it until the BLE worker runs); after 10 s without BLE traffic
-     * the cable rule below picks USB or NFC again.
+     * the cable rule below picks USB again.
      */
     static uint32_t ble_retry_at = 0;
     ZfBleLink *link = app->ble_link;
@@ -1721,9 +1689,6 @@ static void zerofido_auto_transport_tick(ZerofidoApp *app) {
     }
     last_check = now;
     cable = furi_hal_power_get_usb_voltage() > 4.0f;
-#if defined(ZF_NFC_LAB) && ZF_NFC_LAB
-    cable = false; /* lab build: NFC even on the cable, trace over USB serial */
-#endif
     if (cable != last_cable) {
         last_cable = cable;
         stable = 0;
@@ -1733,11 +1698,10 @@ static void zerofido_auto_transport_tick(ZerofidoApp *app) {
         stable++;
         return;
     }
-    /* Owner 2026-11-06: NFC off by default; no cable means Bluetooth. */
+    /* Owner 2026-11-06: NFC is out of the project; no cable means Bluetooth. */
     want = cable ? ZfTransportModeUsbHid
-                 : (ZF_NFC_ENABLED ? ZfTransportModeNfc
-                                   : (ZF_BLE_ENABLED && app->ble_link ? ZfTransportModeBle
-                                                                      : ZfTransportModeUsbHid));
+                 : (ZF_BLE_ENABLED && app->ble_link ? ZfTransportModeBle
+                                                    : ZfTransportModeUsbHid);
     furi_mutex_acquire(app->ui_mutex, FuriWaitForever);
     busy = app->approval.state == ZfApprovalPending || app->maintenance_busy ||
            !app->startup_complete || app->runtime_config.transport_mode == want;
@@ -1747,8 +1711,7 @@ static void zerofido_auto_transport_tick(ZerofidoApp *app) {
     }
     bool ok = zf_app_lifecycle_switch_transport_runtime(app, want);
     ZF_TRACE(app->storage, "AUTO mode=%s ok=%d free=%u maxblk=%u",
-             want == ZfTransportModeUsbHid ? "usb" : want == ZfTransportModeNfc ? "nfc" : "ble",
-             ok ? 1 : 0,
+             want == ZfTransportModeUsbHid ? "usb" : "ble", ok ? 1 : 0,
              (unsigned)memmgr_get_free_heap(), (unsigned)memmgr_heap_get_max_free_block());
     zerofido_ui_refresh_status(app);
 #endif
@@ -1760,10 +1723,6 @@ static void zerofido_tick_callback(void *context) {
 
     furi_assert(app);
     zf_vault_tick(); /* tpm branch: wipe the PMK after its timeout */
-    if (zf_nfc_xlog_pending()) { /* tpm branch: the phone left — write what NFC kept in RAM */
-        zf_trace_flush(app->storage);
-        zf_nfc_xlog_flush(app->storage);
-    }
     zerofido_auto_transport_tick(app);
     zf_app_lifecycle_startup_pending(app);
     if (zerofido_ui_expire_pending_interaction(app)) {

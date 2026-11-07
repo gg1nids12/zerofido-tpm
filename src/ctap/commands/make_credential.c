@@ -120,7 +120,7 @@ uint8_t zf_ctap_handle_make_credential(ZerofidoApp *app, ZfTransportSessionId se
     }
     resident_key = scratch->request.has_rk && scratch->request.rk;
     /*
-     * Several CTAP 2.0 NFC clients recover from PIN_REQUIRED by obtaining a
+     * Several CTAP 2.0 clients recover from PIN_REQUIRED by obtaining a
      * PIN token, then retry non-resident MakeCredential without pinAuth. Keep
      * that U2F-like registration path interoperable, but still require UV for
      * resident credentials.

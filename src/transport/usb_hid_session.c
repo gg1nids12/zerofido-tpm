@@ -15,8 +15,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef ZF_NFC_ONLY
-
 #include "usb_hid_session.h"
 
 #include <furi.h>
@@ -833,4 +831,3 @@ void zf_transport_session_tick(ZfTransportState *transport, uint32_t now) {
     }
 }
 
-#endif

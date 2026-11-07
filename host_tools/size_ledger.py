@@ -18,7 +18,6 @@ DEFAULT_ARTIFACTS = (
     Path("dist/zerofido.fap"),
     Path("dist/zerofido-release.fap"),
     Path("dist/zerofido-usb-diagnostics.fap"),
-    Path("dist/zerofido-nfc-diagnostics.fap"),
     Path("dist/zerofido-full-diagnostics.fap"),
 )
 DEFAULT_DEBUG_ELF = Path("dist/debug/zerofido_d.elf")

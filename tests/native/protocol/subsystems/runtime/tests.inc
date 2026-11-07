@@ -31,21 +31,26 @@ static void test_runtime_config_persist_round_trips_auto_accept_setting(void) {
            "runtime config load should ignore stale persisted FIDO2 disabled state");
 }
 
-static void test_runtime_config_persist_round_trips_transport_mode(void) {
+/*
+ * tpm branch (2026-11-06): transport mode 1 was the NFC transport, removed from
+ * the project. A config file written by an older build must be rejected on load
+ * so the app falls back to USB HID instead of a transport that no longer exists.
+ */
+static void test_runtime_config_load_rejects_removed_transport_mode(void) {
     Storage storage = {0};
     ZfRuntimeConfig saved = {0};
     ZfRuntimeConfig loaded = {0};
 
     test_storage_reset();
     zf_runtime_config_load_defaults(&saved);
-    saved.transport_mode = ZfTransportModeNfc;
+    saved.transport_mode = (ZfTransportMode)1;
 
     expect(zf_runtime_config_persist(&storage, &saved),
-           "persisting NFC transport config should succeed in native storage");
+           "persisting a legacy transport value should still write the file");
 
     zf_runtime_config_load(&storage, &loaded);
-    expect(loaded.transport_mode == ZfTransportModeNfc,
-           "runtime config load should restore the persisted NFC transport mode");
+    expect(loaded.transport_mode == ZfTransportModeUsbHid,
+           "a removed transport mode should load as USB HID");
 }
 
 static void test_runtime_config_persist_round_trips_fido2_profile(void) {
@@ -340,40 +345,3 @@ static void test_runtime_config_set_attestation_preserves_runtime_state_on_persi
            "failed attestation persist should keep resolved none mode");
 }
 
-static void run_transport_mode_switch_failure_preserves_persisted_mode(
-    ZfTransportMode from_mode, ZfTransportMode to_mode, const ZfTransportAdapterOps *adapter) {
-    Storage storage = {0};
-    ZerofidoApp app = {0};
-    FuriMutex ui_mutex = {0};
-    ZfRuntimeConfig loaded = {0};
-
-    test_storage_reset();
-    app.storage = &storage;
-    app.ui_mutex = &ui_mutex;
-    app.running = true;
-    zf_runtime_config_load_defaults(&app.runtime_config);
-    app.runtime_config.transport_mode = from_mode;
-    zf_runtime_config_apply(&app, &app.runtime_config);
-    app.transport_adapter = adapter;
-    expect(zf_runtime_config_persist(&storage, &app.runtime_config),
-           "test setup should persist the original transport mode");
-    g_thread_alloc_fail = true;
-
-    expect(!zf_app_lifecycle_set_transport_mode(&app, &storage, to_mode),
-           "transport mode switch should fail when the new worker cannot be allocated");
-    expect(app.runtime_config.transport_mode == from_mode,
-           "failed transport switch should restore the original runtime mode");
-
-    zf_runtime_config_load(&storage, &loaded);
-    expect(loaded.transport_mode == from_mode,
-           "failed transport switch should keep the original persisted mode");
-    expect(g_thread_start_count == 0,
-           "failed transport switch should not start a worker when allocation fails");
-}
-
-static void test_transport_mode_switch_failure_preserves_persisted_mode(void) {
-    run_transport_mode_switch_failure_preserves_persisted_mode(
-        ZfTransportModeUsbHid, ZfTransportModeNfc, &zf_transport_usb_hid_adapter);
-    run_transport_mode_switch_failure_preserves_persisted_mode(
-        ZfTransportModeNfc, ZfTransportModeUsbHid, &zf_transport_nfc_adapter);
-}

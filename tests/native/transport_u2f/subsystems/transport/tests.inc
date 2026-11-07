@@ -209,46 +209,6 @@ static void test_usb_worker_polls_while_idle_and_assembling(void) {
            "active USB assembly still needs timeout polling");
 }
 
-static void test_nfc_worker_waits_forever_while_idle(void) {
-    ZerofidoApp app = {0};
-
-    test_reset();
-    g_thread_flag_results[0] = ZF_NFC_WORKER_EVT_STOP;
-    g_thread_flag_result_count = 1;
-
-    expect(zf_transport_nfc_worker(&app) == 0, "NFC worker should exit cleanly on stop");
-    expect(g_last_thread_wait_timeout == FuriWaitForever,
-           "idle NFC worker should wait indefinitely for request or stop events");
-}
-
-static void test_nfc_worker_releases_transport_arena_on_listener_alloc_failure(void) {
-    ZerofidoApp app = {0};
-
-    test_reset();
-    g_nfc_listener_alloc_result = false;
-
-    expect(zf_transport_nfc_worker(&app) == 0, "NFC worker should exit cleanly on listener OOM");
-    expect(app.transport_arena == NULL, "NFC listener failure should release the transport arena");
-    expect(app.transport_arena_size == 0,
-           "NFC listener failure should clear the transport arena size");
-    expect(strcmp(g_last_status_text, "NFC listener failed") == 0,
-           "NFC listener failure should publish a status message");
-}
-
-static void test_nfc_worker_releases_transport_arena_on_resource_alloc_failure(void) {
-    ZerofidoApp app = {0};
-
-    test_reset();
-    g_nfc_alloc_result = false;
-
-    expect(zf_transport_nfc_worker(&app) == 0, "NFC worker should exit cleanly on resource OOM");
-    expect(app.transport_arena == NULL, "NFC resource failure should release the transport arena");
-    expect(app.transport_arena_size == 0,
-           "NFC resource failure should clear the transport arena size");
-    expect(strcmp(g_last_status_text, "NFC init failed") == 0,
-           "NFC resource failure should publish a status message");
-}
-
 static void test_transport_worker_processes_disconnect_when_coalesced_with_interaction(void) {
     ZerofidoApp app = {0};
 

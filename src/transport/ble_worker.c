@@ -12,7 +12,7 @@
 
 #include "ble_worker.h"
 
-#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY) && !defined(ZF_NFC_ONLY)
+#if ZF_BLE_ENABLED && !defined(ZF_USB_ONLY)
 
 #include <furi.h>
 #include <string.h>

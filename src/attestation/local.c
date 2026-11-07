@@ -41,7 +41,7 @@ typedef struct {
 } ZfLocalAttestationScratch;
 
 _Static_assert(sizeof(ZfLocalAttestationScratch) <= 1536U,
-               "local attestation generation scratch must stay NFC-safe");
+               "local attestation generation scratch must stay within the frame cap");
 
 /*
  * This module writes a constrained DER/X.509 profile for local attestation.
