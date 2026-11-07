@@ -84,3 +84,9 @@ uint8_t zf_pin_verify_hash(Storage *storage, ZfClientPinState *state,
 /* tpm branch: slow, device-bound PIN check through the vault (vault.h). */
 bool zf_pin_check_hash(Storage *storage, ZfClientPinState *state,
                        const uint8_t pin_hash[ZF_PIN_HASH_LEN]);
+/*
+ * tpm branch (2026-11-07): how long the last slow check took, so the service
+ * trace can show whether the wait before the OK prompt is the deliberate PIN
+ * stretch or something else (key agreement, SD writes).
+ */
+uint32_t zf_pin_last_check_ms(void);

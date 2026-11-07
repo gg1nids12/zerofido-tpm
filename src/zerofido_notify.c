@@ -52,6 +52,15 @@ static const NotificationSequence zf_sequence_prompt_led_off = {
     &message_blue_0, &message_do_not_reset, NULL,
 };
 
+/*
+ * tpm branch (2026-11-07): the owner wants blue for "done" instead of green
+ * ("replace the green indication with blue"). Steady blue, while the prompt
+ * light blinks, so the two still read differently.
+ */
+static const NotificationSequence zf_sequence_success_blue = {
+    &message_red_0, &message_green_0, &message_blue_255, &message_do_not_reset, NULL,
+};
+
 static void zf_prompt_timer_callback(void *context) {
     UNUSED(context);
     uint32_t tick = zf_prompt_tick++;
@@ -220,6 +229,21 @@ void zerofido_notify_prompt(ZerofidoApp *app) {
     }
 }
 
+/*
+ * tpm branch (2026-11-07): the prompt keeps pulsing until the command finishes,
+ * and finishing an assertion takes seconds on this hardware. The owner pressed
+ * OK and the Flipper went on buzzing, which reads as "the press did not
+ * register" ("ok is pressed with a delay and the vibrations keep going"). The
+ * UI calls this the moment the user decides, so the buzzing stops with the
+ * press; the success or error signal still comes when the work is done.
+ */
+void zerofido_notify_prompt_stop(ZerofidoApp *app) {
+    zf_prompt_stop();
+    if (app && app->notifications) {
+        notification_message(app->notifications, &zf_sequence_prompt_led_off);
+    }
+}
+
 void zerofido_notify_wink(ZerofidoApp *app) {
     if (!app || !app->notifications) {
         return;
@@ -235,11 +259,14 @@ void zerofido_notify_success(ZerofidoApp *app) {
         return;
     }
 
+    /*
+     * tpm branch (2026-11-07): no buzz once the work is done. Vibration is
+     * there to call the owner to the device ("vibration is needed to draw
+     * attention and call for action"), and a buzz after the OK press only
+     * makes it look as though something else is wanted. Light only.
+     */
     zf_notify_prepare_transient(app);
-    if (zf_notify_should_vibrate(app)) {
-        notification_message(app->notifications, &sequence_single_vibro);
-    }
-    notification_message(app->notifications, &sequence_set_green_255);
+    notification_message(app->notifications, &zf_sequence_success_blue);
     zf_notify_arm_clear(app, ZF_NOTIFY_SUCCESS_MS);
 }
 

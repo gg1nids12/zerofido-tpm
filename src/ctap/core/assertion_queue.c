@@ -167,6 +167,10 @@ uint8_t zf_ctap_assertion_queue_handle_next(ZerofidoApp *app, ZfTransportSession
     uint32_t next_sign_count = 0;
     uint32_t prepared_counter_high_water = 0;
     bool maintenance_acquired = false;
+    /* tpm branch (2026-11-07): where the seconds per queued account go. */
+    uint32_t phase_started = furi_get_tick();
+    uint32_t load_ms = 0;
+    uint32_t sign_ms = 0;
 
     if (!app) {
         return ZF_CTAP_ERR_OTHER;
@@ -239,7 +243,21 @@ uint8_t zf_ctap_assertion_queue_handle_next(ZerofidoApp *app, ZfTransportSession
         goto cleanup;
     }
 
+    load_ms = furi_get_tick() - phase_started;
+    phase_started = furi_get_tick();
     zf_transport_processing_keepalive(app, session_id);
+/*
+ * tpm branch (2026-11-07): the record file keeps the *reserved* counter ceiling
+ * (sign_count + ZF_COUNTER_RESERVATION_WINDOW), so that an unclean shutdown can
+ * never hand out a counter twice. The in-RAM index keeps the value actually
+ * used. Signing from the file's value put every single assertion one step above
+ * the ceiling, so each one reserved again - two SD writes, about 1.25 s of the
+ * 1.9 s an account cost while the PC walked a six-account list. Take the used
+ * value from the index: the window then does its job and only every 32nd
+ * assertion pays for a reservation. After a restart the index is rebuilt from
+ * the file, so the counter resumes above the ceiling and still never repeats.
+ */
+    zf_store_counter_base_from_index(&scratch->entry, &scratch->record);
     if (!zf_get_next_sign_count(&scratch->record, &next_sign_count)) {
         status = ZF_CTAP_ERR_OTHER;
         zf_ctap_assertion_queue_clear_if_current(app, session_id, queue_index, record_index,
@@ -263,6 +281,10 @@ uint8_t zf_ctap_assertion_queue_handle_next(ZerofidoApp *app, ZfTransportSession
     if (status != ZF_CTAP_SUCCESS) {
         goto cleanup;
     }
+
+    sign_ms = furi_get_tick() - phase_started;
+    phase_started = furi_get_tick();
+    zf_transport_processing_keepalive(app, session_id);
 
     status = zf_transport_poll_cbor_control(app, session_id);
     if (status != ZF_CTAP_SUCCESS) {
@@ -322,8 +344,9 @@ cleanup:
      * list for a sign-in without a user name. Without this line a client that
      * never asks cannot be told from one we answer badly.
      */
-    ZF_TRACE(app->storage, "GN st=%02X i=%u/%u", status, (unsigned)queue_index,
-             (unsigned)match_count);
+    ZF_TRACE(app->storage, "GN st=%02X i=%u/%u ld=%lu sg=%lu ct=%lu", status,
+             (unsigned)queue_index, (unsigned)match_count, (unsigned long)load_ms,
+             (unsigned long)sign_ms, (unsigned long)(furi_get_tick() - phase_started));
     if (maintenance_acquired) {
         zf_ctap_assertion_queue_end_maintenance(app);
     }

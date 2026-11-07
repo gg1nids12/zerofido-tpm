@@ -243,9 +243,10 @@ uint8_t zerofido_pin_handle_command_with_session(ZerofidoApp *app, ZfTransportSe
     }
 cleanup:
     zf_vault_set_progress(NULL, NULL);
-    ZF_TRACE(app->storage, "CP sub=%u st=%02X ms=%lu pin=%d vault=%d/%d",
+    ZF_TRACE(app->storage, "CP sub=%u st=%02X ms=%lu chk=%lu pin=%d vault=%d/%d",
              parsed ? (unsigned)parsed->subcommand : 0U, status,
-             (unsigned long)(furi_get_tick() - started_at), app->pin_state.pin_set ? 1 : 0,
+             (unsigned long)(furi_get_tick() - started_at),
+             (unsigned long)zf_pin_last_check_ms(), app->pin_state.pin_set ? 1 : 0,
              zf_vault_is_present() ? 1 : 0, zf_vault_is_unlocked() ? 1 : 0);
 #if ZF_RELEASE_DIAGNOSTICS
     zf_pin_log_result(diagnostic_tag, status);

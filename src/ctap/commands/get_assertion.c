@@ -209,6 +209,18 @@ static uint8_t zf_ctap_load_and_prepare_assertion(
                                        store_io_size)) {
         return ZF_CTAP_ERR_NO_CREDENTIALS;
     }
+/*
+ * tpm branch (2026-11-07): the record file keeps the *reserved* counter ceiling
+ * (sign_count + ZF_COUNTER_RESERVATION_WINDOW), so that an unclean shutdown can
+ * never hand out a counter twice. The in-RAM index keeps the value actually
+ * used. Signing from the file's value put every single assertion one step above
+ * the ceiling, so each one reserved again - two SD writes, about 1.25 s of the
+ * 1.9 s an account cost while the PC walked a six-account list. Take the used
+ * value from the index: the window then does its job and only every 32nd
+ * assertion pays for a reservation. After a restart the index is rebuilt from
+ * the file, so the counter resumes above the ceiling and still never repeats.
+ */
+    zf_store_counter_base_from_index(entry, record);
     return zf_prepare_assertion_response(request, pin_state, record, user_present, uv_verified,
                                          include_user_details, include_count, match_count,
                                          user_selected, include_user_selected, next_sign_count,

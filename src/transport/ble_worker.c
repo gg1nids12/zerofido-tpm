@@ -72,7 +72,23 @@ static void zf_ble_worker_serve(ZerofidoApp *app, ZfBleLink *link) {
         uint32_t elapsed = 0;
         uint8_t ctap_cmd = app->transport_arena[0];
 
-        g_zf_ble.session_id++;
+        /*
+         * tpm branch (2026-11-07): the session id is the CTAP channel, not the
+         * request. It used to be bumped per command, so getNextAssertion -
+         * which must arrive on the channel that produced the assertion - was
+         * answered with CTAP2_ERR_INVALID_CHANNEL. Windows then restarted the
+         * whole sign-in for every account in the list: a fresh PIN token, a
+         * fresh OK press and a fresh buzz each time (owner, 2026-11-07: "the
+         * same problem over Bluetooth, almost a minute and far too many
+         * vibrations"). Tying it to the connection counter keeps the channel
+         * stable for the whole connection and still invalidates queued state
+         * when the peer reconnects. Only one request runs at a time here, so
+         * the stale-work checks below keep working.
+         */
+        ZfBleLinkDiag diag;
+
+        zf_ble_link_get_diag(link, &diag);
+        g_zf_ble.session_id = (ZfTransportSessionId)diag.connects + 1U;
         g_zf_ble.processing = true;
         g_zf_ble.last_keepalive = started;
         /* Request and response share the arena, as on USB. */

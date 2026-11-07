@@ -185,14 +185,23 @@ static bool zf_pin_reserve_attempt(Storage *storage, const ZfClientPinState *sta
     return ok;
 }
 
+static uint32_t zf_pin_check_ms;
+
+uint32_t zf_pin_last_check_ms(void) {
+    return zf_pin_check_ms;
+}
+
 bool zf_pin_check_hash(Storage *storage, ZfClientPinState *state,
                        const uint8_t pin_hash[ZF_PIN_HASH_LEN]) {
     uint8_t verifier[ZF_VAULT_VERIFIER_LEN];
     bool ok = false;
+    uint32_t started = furi_get_tick();
 
     if (!zf_pin_reserve_attempt(storage, state)) {
+        zf_pin_check_ms = furi_get_tick() - started;
         return false; /* no retry left, or storage refuses: fail closed */
     }
+    zf_pin_check_ms = 0;
     if (zf_vault_is_present()) {
         ok = zf_vault_unlock(pin_hash);
         if (ok) {
@@ -212,6 +221,7 @@ bool zf_pin_check_hash(Storage *storage, ZfClientPinState *state,
         }
     }
     zf_crypto_secure_zero(verifier, sizeof(verifier));
+    zf_pin_check_ms = furi_get_tick() - started;
     return ok;
 }
 

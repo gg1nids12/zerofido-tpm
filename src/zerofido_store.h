@@ -93,6 +93,20 @@ bool zf_store_advance_counter(Storage *storage, ZfCredentialStore *store,
 bool zf_store_prepare_counter_advance(Storage *storage, const ZfCredentialIndexEntry *entry,
                                       const ZfCredentialRecord *record, uint8_t *buffer,
                                       size_t buffer_size, uint32_t *out_counter_high_water);
+/*
+ * tpm branch (2026-11-07): the record file keeps the *reserved* counter ceiling
+ * (sign_count + ZF_COUNTER_RESERVATION_WINDOW) so an unclean shutdown can never
+ * hand out a counter twice; the in-RAM index keeps the value actually used.
+ * Signing from the file's value put every assertion one step above the ceiling,
+ * so each one reserved again - two SD writes, about 1.25 s of the 1.9 s an
+ * account cost while a PC walked a six-account list. Call this after loading a
+ * record for signing: it lowers the record's counter to what the index says was
+ * used, so the reservation window does its job. A record loaded after a restart
+ * matches the index, so nothing changes and the counter never repeats.
+ */
+void zf_store_counter_base_from_index(const ZfCredentialIndexEntry *entry,
+                                      ZfCredentialRecord *record);
+
 bool zf_store_publish_counter_advance(ZfCredentialStore *store, const ZfCredentialRecord *record,
                                       uint32_t counter_high_water);
 

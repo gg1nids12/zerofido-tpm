@@ -63,6 +63,8 @@ typedef struct {
 static void zerofido_approval_finish(ZerofidoApp *app, bool approved) {
     bool finished = false;
 
+    /* tpm branch (2026-11-07): the press stops the buzzing, not the reply. */
+    zerofido_notify_prompt_stop(app);
     furi_mutex_acquire(app->ui_mutex, FuriWaitForever);
     finished = zerofido_ui_finish_interaction_locked(app, approved ? ZfApprovalApproved
                                                                    : ZfApprovalDenied);
@@ -355,6 +357,7 @@ bool zerofido_ui_deny_pending_interaction(ZerofidoApp *app) {
     denied = zerofido_ui_finish_interaction_locked(app, ZfApprovalDenied);
     furi_mutex_release(app->ui_mutex);
     if (denied) {
+        zerofido_notify_prompt_stop(app);
         zf_transport_notify_interaction_changed(app);
     }
     return denied;
@@ -370,6 +373,7 @@ bool zerofido_ui_expire_pending_interaction(ZerofidoApp *app) {
     }
     furi_mutex_release(app->ui_mutex);
     if (timed_out) {
+        zerofido_notify_prompt_stop(app);
         zf_transport_notify_interaction_changed(app);
     }
     return timed_out;
@@ -382,6 +386,7 @@ bool zerofido_ui_cancel_pending_interaction(ZerofidoApp *app) {
     canceled = zerofido_ui_cancel_pending_interaction_locked(app);
     furi_mutex_release(app->ui_mutex);
     if (canceled) {
+        zerofido_notify_prompt_stop(app);
         zf_transport_notify_interaction_changed(app);
     }
     return canceled;

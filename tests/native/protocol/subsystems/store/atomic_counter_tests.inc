@@ -844,3 +844,33 @@ static void test_store_counter_reservation_failure_does_not_publish_counter(void
     expect(counter_slot == NULL || !counter_slot->exists,
            "failed counter floor commit must not publish a counter file");
 }
+
+/*
+ * tpm branch (2026-11-07): a record read back from the card carries the
+ * reserved ceiling, not the counter that was last used. Signing from the
+ * ceiling made every assertion reserve again - two SD writes, about 1.25 s
+ * each, which is what made a six-account sign-in take some twenty seconds.
+ */
+static void test_counter_base_comes_from_the_index_not_the_reserved_ceiling(void) {
+    ZfCredentialIndexEntry entry = {0};
+    ZfCredentialRecord record = {0};
+
+    entry.in_use = true;
+    entry.sign_count = 5;
+    entry.counter_high_water = 32;
+    record.in_use = true;
+    record.sign_count = 32; /* what the file holds after a reservation */
+
+    zf_store_counter_base_from_index(&entry, &record);
+    expect(record.sign_count == 5,
+           "signing should continue from the counter actually used");
+
+    record.sign_count = 3; /* already below the index: leave it alone */
+    zf_store_counter_base_from_index(&entry, &record);
+    expect(record.sign_count == 3, "a record behind the index must not be pushed forward");
+
+    entry.in_use = false;
+    record.sign_count = 32;
+    zf_store_counter_base_from_index(&entry, &record);
+    expect(record.sign_count == 32, "a free index slot must not change the record");
+}

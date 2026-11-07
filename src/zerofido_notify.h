@@ -25,6 +25,8 @@ typedef struct ZerofidoApp ZerofidoApp;
 bool zerofido_notify_init(ZerofidoApp *app);
 void zerofido_notify_deinit(ZerofidoApp *app);
 void zerofido_notify_prompt(ZerofidoApp *app);
+/* Stops the OK-prompt vibration and light as soon as the user decides. */
+void zerofido_notify_prompt_stop(ZerofidoApp *app);
 void zerofido_notify_wink(ZerofidoApp *app);
 void zerofido_notify_success(ZerofidoApp *app);
 void zerofido_notify_error(ZerofidoApp *app);

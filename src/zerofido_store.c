@@ -529,6 +529,17 @@ bool zf_store_prepare_counter_advance(Storage *storage, const ZfCredentialIndexE
     return true;
 }
 
+/* See zerofido_store.h. */
+void zf_store_counter_base_from_index(const ZfCredentialIndexEntry *entry,
+                                      ZfCredentialRecord *record) {
+    if (!entry || !record || !entry->in_use) {
+        return;
+    }
+    if (entry->sign_count < record->sign_count) {
+        record->sign_count = entry->sign_count;
+    }
+}
+
 bool zf_store_publish_counter_advance(ZfCredentialStore *store, const ZfCredentialRecord *record,
                                       uint32_t counter_high_water) {
     if (!store || !store->records || !record || counter_high_water < record->sign_count) {
