@@ -74,8 +74,11 @@ The upstream README already says physical access changes the risk model.
 - **F8. On-device PIN removal** must take bound credentials into account.
 - ~~**F9. The iOS NFC path processes CTAP synchronously**~~ — dropped: the NFC transport is no
   longer part of this project.
-- **F10. USB long work sends no keepalive.** Keepalives are only sent while waiting for a
-  button press.
+- ~~**F10. USB long work sends no keepalive.**~~ Fixed 2026-11-07: record lookup, signing and
+  the counter write now send CTAPHID_KEEPALIVE(PROCESSING), including on the silent `up=false`
+  pre-flight and while the PC walks the account list through getNextAssertion. Before the fix
+  Windows gave up on a ~2 s silence and reported "This security key doesn't look familiar" for a
+  credential that had just been registered.
 
 ## Design (stage 1)
 

@@ -1972,12 +1972,22 @@ static void test_get_assertion_uv_multi_match_lets_platform_pick(void) {
            "UV multi-match should report numberOfCredentials for the PC picker");
     expect(app.assertion_queue.active && app.assertion_queue.count == 2,
            "UV multi-match should queue the other account");
+    expect(g_notify_success_count == 1,
+           "the approved assertion should signal success once");
 
     next_response_len =
         zerofido_handle_ctap2(&app, 0x01020304, (const uint8_t[]){ZfCtapeCmdGetNextAssertion}, 1,
                               next_response, sizeof(next_response));
     expect(next_response_len > 1 && next_response[0] == ZF_CTAP_SUCCESS,
            "GetNextAssertion should return the second account");
+    /*
+     * tpm branch (2026-11-07): the PC walks the whole account list through
+     * GetNextAssertion. One success buzz per entry reads as the key
+     * misbehaving (owner: "endless login and the Flipper kept vibrating"),
+     * so only the assertion the user approved signals success.
+     */
+    expect(g_notify_success_count == 1,
+           "walking the account list should not signal success again");
 }
 
 static void test_get_assertion_up_false_multi_match_reports_count_and_queues_next(void) {

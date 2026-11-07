@@ -242,3 +242,37 @@ plus Bluetooth LE already cover what this build is for.
   75 Python tests pass (3 skipped).
 - Build (Momentum mntm-012, API 87.1): `ZEROFIDO_PROFILE=full` 158 656 bytes (with NFC it was
   188 572; the previous NFC-off build 158 904), `ZEROFIDO_PROFILE=usb` builds too.
+
+## 2026-11-07 — sign-in on Windows: keepalive during slow work
+
+Registering worked, signing in by user name did not: Windows answered "This security key
+doesn't look familiar" for a credential registered seconds earlier. The service trace showed
+the cause — Windows first asks silently ("do you have this credential?", `up=false`, no touch),
+the Flipper finds it and answers success, but the answer takes about 2 s (record read,
+signature, counter write) and nothing is sent in the meantime. CTAPHID expects a busy
+authenticator to send KEEPALIVE; ours only did so while waiting for the OK press, which that
+silent check never reaches. This is hardening note F10, not a side effect of removing NFC.
+
+- `src/ctap/commands/get_assertion.c`, `src/ctap/core/assertion_queue.c`:
+  `zf_transport_processing_keepalive()` is now called between the slow phases of getAssertion
+  and of every queued getNextAssertion. Never under `ui_mutex` — the keepalive polls the
+  transport and would re-enter the same mutex.
+- `src/ctap/core/assertion_queue.c`: no success buzz per queued account. A sign-in without a
+  user name makes the PC walk the whole list through getNextAssertion; one buzz per entry read
+  as the key misbehaving (owner: "endless login and the Flipper kept vibrating"). The buzz for
+  the assertion the user approved still happens in getAssertion.
+- Service trace: the `GA` line gained `uv=` and `al=` (was the PIN checked, did the site name a
+  credential); new `GAR` line (matches, record index, response size, lookup and signing times)
+  and `GN` line (getNextAssertion status and position in the list). No secrets: counts, codes
+  and timings only.
+- Test: `tests/native/protocol/subsystems/ctap/command_tests.inc`
+  (`test_get_assertion_uv_multi_match_lets_platform_pick`) now also asserts that walking the
+  account list signals success exactly once; it fails with the old behaviour.
+
+### Verification (2026-11-07, Momentum mntm-012, Windows 11, webauthn.io)
+
+- Sign-in by user name: "You're logged in!" (failed before the fix on the same credential).
+- Sign-in without a user name with six passkeys for the site: Windows shows the account picker;
+  the trace shows `GN st=00 i=1/6 … i=5/6`. About two seconds per account is the Flipper's own
+  speed (record read, signature, counter write), now a quiet wait instead of a dropped sign-in.
+- Host: all native suites and 75 Python tests pass.

@@ -109,6 +109,7 @@ static bool g_approval_result = true;
 static ZfApprovalState g_approval_state = ZfApprovalApproved;
 static bool g_attestation_ensure_ready = true;
 static size_t g_selection_request_count = 0;
+static size_t g_notify_success_count = 0;
 static bool g_selection_request_ok = true;
 static size_t g_selection_index = 0;
 static size_t g_last_selection_match_count = 0;
@@ -259,6 +260,7 @@ static void test_storage_reset(void) {
     g_approval_state = ZfApprovalApproved;
     g_attestation_ensure_ready = true;
     g_selection_request_count = 0;
+    g_notify_success_count = 0;
     g_selection_request_ok = true;
     g_selection_index = 0;
     g_last_selection_match_count = 0;
@@ -1284,6 +1286,7 @@ uint8_t zf_transport_poll_cbor_control(ZerofidoApp *app, uint32_t current_cid) {
 
 void zerofido_notify_success(ZerofidoApp *app) {
     UNUSED(app);
+    g_notify_success_count++;
 }
 
 void zerofido_notify_error(ZerofidoApp *app) {

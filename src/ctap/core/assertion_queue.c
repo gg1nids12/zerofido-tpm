@@ -26,6 +26,7 @@
 #include "../../zerofido_crypto.h"
 #include "../../zerofido_notify.h"
 #include "../../zerofido_store.h"
+#include "../../zerofido_trace.h"
 
 static bool zf_get_next_sign_count(const ZfCredentialRecord *record, uint32_t *next_sign_count) {
     if (!record || !next_sign_count || record->sign_count == UINT32_MAX) {
@@ -220,6 +221,14 @@ uint8_t zf_ctap_assertion_queue_handle_next(ZerofidoApp *app, ZfTransportSession
     }
     furi_mutex_release(app->ui_mutex);
 
+    /*
+     * tpm branch (2026-11-07): a queued entry costs about two seconds (record
+     * read, signature, counter write). Keep the CTAPHID transaction alive, or
+     * the host gives up on a long account list. Never under ui_mutex: the
+     * keepalive polls the transport and would re-enter it.
+     */
+    zf_transport_processing_keepalive(app, session_id);
+
     if (!zf_store_load_record_with_buffer(app->storage, &scratch->entry, &scratch->record,
                                           scratch->work.store_io, sizeof(scratch->work.store_io)) ||
         strcmp(scratch->record.rp_id, scratch->request.rp_id) != 0 ||
@@ -230,6 +239,7 @@ uint8_t zf_ctap_assertion_queue_handle_next(ZerofidoApp *app, ZfTransportSession
         goto cleanup;
     }
 
+    zf_transport_processing_keepalive(app, session_id);
     if (!zf_get_next_sign_count(&scratch->record, &next_sign_count)) {
         status = ZF_CTAP_ERR_OTHER;
         zf_ctap_assertion_queue_clear_if_current(app, session_id, queue_index, record_index,
@@ -297,9 +307,23 @@ uint8_t zf_ctap_assertion_queue_handle_next(ZerofidoApp *app, ZfTransportSession
         zf_ctap_assertion_queue_clear(app);
     }
     furi_mutex_release(app->ui_mutex);
-    zerofido_notify_success(app);
+    /*
+     * tpm branch (2026-11-07): no success buzz per queued account. A sign-in
+     * without a user name makes the PC walk the whole list through
+     * getNextAssertion, and one buzz per entry reads as the key misbehaving
+     * (owner, 2026-11-07: "endless login and the Flipper kept vibrating").
+     * The buzz for the assertion the user approved already happened in
+     * getAssertion; these entries are the PC building its account list.
+     */
 
 cleanup:
+    /*
+     * tpm branch (2026-11-07): getNextAssertion is how a PC builds the account
+     * list for a sign-in without a user name. Without this line a client that
+     * never asks cannot be told from one we answer badly.
+     */
+    ZF_TRACE(app->storage, "GN st=%02X i=%u/%u", status, (unsigned)queue_index,
+             (unsigned)match_count);
     if (maintenance_acquired) {
         zf_ctap_assertion_queue_end_maintenance(app);
     }

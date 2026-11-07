@@ -228,6 +228,9 @@ static uint8_t zf_ctap_finish_assertion(ZerofidoApp *app, ZfTransportSessionId s
     size_t match_count = 1U;
     bool include_count = false;
     bool seed_assertion_queue = false;
+    uint32_t phase_started = furi_get_tick();
+    uint32_t resolve_ms = 0;
+    uint32_t sign_ms = 0;
 
     if (!zf_ctap_begin_maintenance(app)) {
         return ZF_CTAP_ERR_NOT_ALLOWED;
@@ -242,6 +245,15 @@ static uint8_t zf_ctap_finish_assertion(ZerofidoApp *app, ZfTransportSessionId s
         }
         record_index = scratch->matches[0];
     }
+    resolve_ms = furi_get_tick() - phase_started;
+    /*
+     * tpm branch (2026-11-07): record lookup and signing take seconds on this
+     * hardware. Without a touch prompt (a silent up=false pre-flight) nothing
+     * else keeps the CTAPHID transaction alive, so the host can give up before
+     * the answer arrives. Hardening note F10.
+     */
+    zf_transport_processing_keepalive(app, session_id);
+    phase_started = furi_get_tick();
     /*
      * tpm branch (2026-11-06): with a PIN check (UV) and several passkeys for
      * the site, return the first one with numberOfCredentials and queue the
@@ -261,9 +273,19 @@ static uint8_t zf_ctap_finish_assertion(ZerofidoApp *app, ZfTransportSessionId s
         include_user_selected, &scratch->selected_record, &selected_entry, scratch->work.store_io,
         sizeof(scratch->work.store_io), &scratch->work.response, &next_sign_count, out,
         out_capacity, out_len);
+    sign_ms = furi_get_tick() - phase_started;
+    zf_transport_processing_keepalive(app, session_id);
     if (status != ZF_CTAP_SUCCESS) {
         return status;
     }
+    /*
+     * tpm branch (2026-11-07): how long the slow phases took. Record lookup and
+     * signing cost seconds here, and that is what made the host give up before
+     * the keepalives below were added.
+     */
+    ZF_TRACE(app->storage, "GAR m=%u idx=%u len=%u rs=%lu sg=%lu", (unsigned)match_count,
+             (unsigned)record_index, (unsigned)(out_len ? *out_len : 0U),
+             (unsigned long)resolve_ms, (unsigned long)sign_ms);
 
     if (poll_before_publish) {
         status = zf_transport_poll_cbor_control(app, session_id);
@@ -428,10 +450,17 @@ cleanup:
     }
     UNUSED(started_at);
 #else
-    ZF_TRACE(app->storage, "GA st=%02X ms=%lu up=%d n=%u vault=%d/%d", status,
+    /*
+     * tpm branch (2026-11-07): uv and al were added while chasing a Windows
+     * "this security key doesn't look familiar" on a credential that had just
+     * been registered. Without them a NO_CREDENTIALS answer cannot be told
+     * apart from a PIN-bound record hidden because the request carried no PIN.
+     */
+    ZF_TRACE(app->storage, "GA st=%02X ms=%lu up=%d uv=%d al=%d n=%u vault=%d/%d", status,
              (unsigned long)(furi_get_tick() - started_at),
-             (request && request->has_up && !request->up) ? 0 : 1, (unsigned)match_count,
-             zf_vault_is_present() ? 1 : 0, zf_vault_is_unlocked() ? 1 : 0);
+             (request && request->has_up && !request->up) ? 0 : 1, uv_verified ? 1 : 0,
+             uses_allow_list ? 1 : 0, (unsigned)match_count, zf_vault_is_present() ? 1 : 0,
+             zf_vault_is_unlocked() ? 1 : 0);
 #endif
     if (maintenance_acquired) {
         zf_ctap_end_maintenance(app);
